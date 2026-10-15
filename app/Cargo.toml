@@ -1,0 +1,15 @@
+[package]
+name = "murmuration-gpu"
+description = "Starlings at dusk, on your GPU: simulated and rendered in real time with wgpu"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+murmur-gpu = { path = "../crates/murmur-gpu" }
+murmur-render = { path = "../crates/murmur-render" }
+pollster.workspace = true
+wgpu.workspace = true
+winit.workspace = true

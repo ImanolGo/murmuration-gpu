@@ -1,0 +1,29 @@
+[workspace]
+resolver = "3"
+members = [
+    "app",
+    "crates/murmur-gpu",
+    "crates/murmur-ref",
+    "crates/murmur-render",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/ImanolGo/murmuration-gpu"
+
+[workspace.dependencies]
+bytemuck = "1"
+pollster = "1"
+wgpu = "30.0.1"
+winit = "0.30"
+
+[profile.release]
+lto = "thin"
+
+# The phase 1+ acceptance tests simulate minutes of CPU flocking; keep test
+# builds optimised, like the reference project does.
+[profile.test]
+opt-level = 2

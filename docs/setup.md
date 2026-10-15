@@ -17,7 +17,10 @@ cargo test
 
 Simulation and rendering share one wgpu device on the Vulkan backend (wgpu
 also supports Metal and DX12, but this project targets and is measured on
-Vulkan).
+Vulkan). On CachyOS the loader and the drivers are already present
+(`vulkan-icd-loader`, `nvidia-utils`, `vulkan-intel`); nothing needs
+installing for the project to run — if the app prints a Vulkan adapter, Vulkan
+is working.
 
 What wgpu sees is decided by the Vulkan loader and the installed ICDs. On
 this machine they are in `/usr/share/vulkan/icd.d/`:
@@ -25,11 +28,13 @@ this machine they are in `/usr/share/vulkan/icd.d/`:
 - `nvidia_icd.json` — the proprietary driver (`nvidia-utils`)
 - `intel_icd.json`, `intel_hasvk_icd.json` — Mesa
 
-To list what the loader exposes, install the tools and check:
+To list what the loader exposes, the optional diagnostics package is enough
+(it is not a dependency):
 
 ```sh
 sudo pacman -S vulkan-tools
 vulkaninfo --summary        # both GPUs, under GPU0 / GPU1
+vkcube                      # a spinning cube on the selected GPU
 ```
 
 A software adapter (useful for headless CI) comes from `mesa-vulkan-drivers`
@@ -42,7 +47,7 @@ The laptop has two Vulkan devices. Everything windowed must run on the
 discrete GPU:
 
 ```sh
-prime-run cargo run --release
+prime-run cargo run -p murmuration-gpu --release
 ```
 
 `prime-run` (package `nvidia-prime`) sets `__NV_PRIME_RENDER_OFFLOAD=1` and
@@ -63,8 +68,8 @@ authority, especially on other compositors and driver versions.
 Useful overrides while debugging:
 
 ```sh
-WGPU_BACKEND=vulkan prime-run cargo run --release   # force the backend
-WGPU_POWER_PREF=low-power cargo run --release       # ask for the iGPU instead
+WGPU_BACKEND=vulkan prime-run cargo run -p murmuration-gpu --release   # force the backend
+WGPU_POWER_PREF=low-power cargo run -p murmuration-gpu --release       # ask for the iGPU instead
 ```
 
 ## Windowing

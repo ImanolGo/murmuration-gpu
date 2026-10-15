@@ -100,7 +100,7 @@ baseline is recorded in `docs/reference-analyze-2000-42.txt`).
 the baseline; `tests/oracle.rs` asserts it (t = 20 s and 60 s every run, the
 full 120 s with `--ignored`). Details in `docs/progress.md`.
 
-## Phase 2 — GPU simulation, brute force
+## Phase 2 — GPU simulation, brute force (done)
 
 - Port the per-bird force step to WGSL one function at a time, keeping the
   same names and order as the CPU code. Neighbour search is O(N²) here on
@@ -113,6 +113,42 @@ full 120 s with `--ignored`). Details in `docs/progress.md`.
 of the CPU ones (start with ±10 % on each metric, then tighten) across five
 seeds. Single-step test: one step from the same state matches the CPU to
 about 1e-4 relative error per bird.
+
+**Update (2026-10-15) — tolerances, chaos, and the accumulator.** Building
+the `--parity` harness showed that a single 2,000-bird flock is chaotic in its
+*global shape* but self-averaging in its *local structure*, so "±10 % on each
+metric" is not one target:
+
+- The local, self-averaging statistics (`|N|`, nearest-neighbour distance,
+  cluster fraction, alignment fraction, radius, spread, extent, height, speed,
+  bank, centroid radius) agree within ±10 % (usually far below) on every seed.
+- The global shape metrics (`I2/I1`, `I3/I1`, `flat`) do **not** self-average
+  over one minute at 2,000 birds: the CPU's own value swings by an order of
+  magnitude from seed to seed (here `I2/I1` ranged 3.2–30.4). A ±10 % bound on
+  them is therefore not a meaningful match criterion yet; they are compared at
+  ±50 % and left to tighten on phase 4's larger, longer runs.
+- To keep a *tight* comparison, phase 2 adds a short-horizon **lock-in** check:
+  both engines stepped together must agree on *every* metric (at ±10 %) for the
+  first seconds, before the trajectories diverge. That is what proves the
+  shader mirrors the dynamics; the 60 s run only proves the statistics match.
+
+The noise is also a documented adaptation, not a target: the GPU uses a
+counter-based PCG stream per bird instead of the CPU's `ChaCha8` (whose stream
+position cannot be extracted), so bit-exact noise parity is out of scope, as
+recorded in the stack notes. Short-horizon parity is exact only with the noise
+switched off on both engines, through a default-preserving `w_xi` seam.
+
+The "fixed-step loop, accumulator, step capped at 1/120 s" line is split:
+`Sim::advance` runs the fixed 5 ms step now; the wall-clock accumulator and the
+1/120 s presentation cap belong to the real-time render loop and land with the
+first render (phase 5–6), where wall-clock time enters.
+
+**Met (2026-10-15):** at 2,000 birds the shader reproduces the reference to
+`1.1e-7` relative per bird in one noise-free step (target `1e-4`); both engines
+lock in within 10 % on every metric for the first 5 s; and the 60 s statistics
+agree across five seeds (within 10 %, or the relaxed 50 % for the chaotic shape
+metrics) with the full table recorded in `docs/parity-2000-five-seeds.txt`.
+Details in `docs/progress.md`.
 
 ## Phase 3 — Spatial grid and topological neighbours
 

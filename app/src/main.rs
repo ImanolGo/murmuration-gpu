@@ -6,11 +6,20 @@
 //! (see PLAN.md). Run on the discrete GPU of a hybrid-graphics laptop with
 //! `prime-run` (see docs/setup.md) and check the printed adapter before
 //! trusting any measurement.
+//!
+//! Phase 2 adds a headless `--parity` mode: it runs the CPU oracle and the GPU
+//! simulation from the same state and compares the reference statistics each
+//! second, exactly what phase 2's acceptance asks for.
+//!
+//! Usage:
+//!   prime-run cargo run -p murmuration-gpu --release                              # window
+//!   cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seconds 60
 
 use std::error::Error;
 use std::sync::Arc;
 
-use murmur_gpu::device::{self, Gpu};
+use murmur_gpu::device::{self, DeviceError, Gpu};
+use murmur_gpu::parity;
 use murmur_render::sky;
 use winit::{
     application::ApplicationHandler,
@@ -21,7 +30,127 @@ use winit::{
     window::{Window, WindowId},
 };
 
+/// The command line. Hand-rolled for now; PLAN.md phase 8 moves the app to a
+/// `clap` CLI matching the terminal version.
+#[derive(Debug)]
+struct Args {
+    /// Run the headless CPU/GPU parity check instead of the window.
+    parity: bool,
+    /// Number of birds.
+    birds: usize,
+    /// First seed; the sweep uses `seed .. seed + seeds`.
+    seed: u64,
+    /// Simulated seconds per seed.
+    seconds: u32,
+    /// Number of seeds.
+    seeds: u32,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            parity: false,
+            birds: 2000,
+            seed: 1,
+            seconds: 60,
+            seeds: 5,
+        }
+    }
+}
+
+fn parse_args() -> Result<Args, String> {
+    let mut args = Args::default();
+    let mut it = std::env::args().skip(1);
+    while let Some(arg) = it.next() {
+        match arg.as_str() {
+            "--parity" => args.parity = true,
+            "--birds" => args.birds = value(&mut it, "--birds")?.parse().map_err(err)?,
+            "--seed" => args.seed = value(&mut it, "--seed")?.parse().map_err(err)?,
+            "--seconds" => args.seconds = value(&mut it, "--seconds")?.parse().map_err(err)?,
+            "--seeds" => args.seeds = value(&mut it, "--seeds")?.parse().map_err(err)?,
+            "-h" | "--help" => {
+                println!(
+                    "murmuration-gpu [--parity] [--birds N] [--seed S] [--seconds T] [--seeds K]"
+                );
+                std::process::exit(0);
+            }
+            other => return Err(format!("unknown argument {other:?}")),
+        }
+    }
+    Ok(args)
+}
+
+fn value(it: &mut impl Iterator<Item = String>, flag: &str) -> Result<String, String> {
+    it.next().ok_or_else(|| format!("{flag} needs a value"))
+}
+
+fn err<E: std::fmt::Display>(error: E) -> String {
+    error.to_string()
+}
+
+/// The headless CPU/GPU parity check (PLAN.md phase 2 acceptance).
+fn run_parity(args: &Args) -> Result<(), Box<dyn Error>> {
+    let gpu = open()?;
+    let info = gpu.info();
+    println!(
+        "# murmuration-gpu --parity birds={} seed={}..+{} seconds={}",
+        args.birds, args.seed, args.seeds, args.seconds
+    );
+    println!(
+        "# adapter \"{}\" on {:?} ({:?}), driver \"{}\" {}",
+        info.name, info.backend, info.device_type, info.driver, info.driver_info
+    );
+
+    let mut all_ok = true;
+    for i in 0..args.seeds {
+        let seed = args.seed + i as u64;
+        let report = parity::run_seed(&gpu, seed, args.birds, args.seconds);
+        println!("# seed {seed}");
+        if i == 0 {
+            // One seed of per-second lines; the rest are summarised by their
+            // settled table so the output stays readable.
+            for (time, cpu, on_gpu) in &report.per_second {
+                println!("t={time:6.1}s cpu {}", cpu.line());
+                println!("         gpu {}", on_gpu.line());
+            }
+        }
+        print!(
+            "{}",
+            parity::table(&format!("seed {seed} settled"), &report.settled)
+        );
+        all_ok &= report.passed();
+    }
+    println!("# parity {}", if all_ok { "PASS" } else { "FAIL" });
+    Ok(())
+}
+
+/// Opens a headless device, or explains why it could not.
+fn open() -> Result<Gpu, Box<dyn Error>> {
+    match device::headless(wgpu::PowerPreference::HighPerformance) {
+        Ok(gpu) => Ok(gpu),
+        Err(DeviceError::NoAdapter(error)) => {
+            Err(format!("no suitable GPU adapter: {error}").into())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
 fn main() {
+    let args = match parse_args() {
+        Ok(args) => args,
+        Err(error) => {
+            eprintln!("error: {error}");
+            std::process::exit(2);
+        }
+    };
+    if args.parity {
+        if let Err(error) = run_parity(&args) {
+            eprintln!("murmuration-gpu: --parity failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let event_loop = EventLoop::new().expect("opening the window event loop");
     let mut app = App::default();
     event_loop

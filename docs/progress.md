@@ -153,3 +153,95 @@ elongated and can split) are recorded there too, unfixed on purpose.
 - (none) for phase 1. Phase 2 is the first GPU simulation (brute-force
   neighbour search) and the `--parity` harness, which will use `state::export`
   and `state::import`.
+
+## Phase 2 — GPU simulation, brute force (2026-10-15)
+
+**Built**
+
+- `murmur-gpu::params`: the 192-byte `#[repr(C)]` `Params` uniform block,
+  built field by field from `murmur_ref::params`, so the constants have one
+  home and cannot drift. `turning` is the shader's `u32` discriminant.
+- `murmur-gpu::bird`: the 112-byte `#[repr(C)]` `Bird` record the shaders read
+  and write, with conversions to and from `murmur_ref::state::Bird`.
+- `murmur-gpu::sim`: `Sim` owns the compute pipelines, the double-buffered
+  bird storage, the shared clock buffer and the readback buffer. Three tiny
+  passes per step (`tick`, `decide`, `integrate`) with the two buffer
+  directions having their own bind groups, so **no queue write per step**:
+  `advance(steps)` encodes many steps into one command buffer.
+- `crates/murmur-gpu/shaders/sim.wgsl`: `flight::{forward, side_of, body_up,
+  step_bird}`, `params::radius_step`, `escape::zigzag_roll` and
+  `social::decide`, mirrored function for function, with a header naming each
+  one. The neighbour search is brute force (O(N²)), as phase 2 asks.
+- `murmur-gpu::parity`: the CPU/GPU comparison — `single_step_max_rel_error`,
+  `single_step_noise_floor`, `lock_in`, `run_seed` and a metric `table`.
+- `app`: a headless `--parity` mode (`--birds`, `--seed`, `--seconds`,
+  `--seeds`), and the `w_xi` seam: `World::w_xi` / `Snapshot::w_xi`
+  (default `params::W_XI`) lets the single-step check switch the random force
+  off on both engines. Default preserves the oracle exactly.
+- Tests: `tests/layout.rs` (size, offsets and field names checked against the
+  WGSL structs — the AGENTS.md drift guard) and `tests/parity.rs`.
+
+**Measured** — GTX 1650 Mobile, driver 615.78.08, Vulkan, 2,000 birds. The
+adapter is printed at the top of every run.
+
+- **Single step, noise off:** `1.065e-7` relative error per bird (positions
+  and velocities), against the `1e-4` target. This is the deterministic match:
+  the shader reproduces the reference forces and integration to float noise.
+- **Single step, noise on:** `7.2e-8` (relative to a bird's position). The
+  residual is the unmatched-noise floor, not a model error.
+- **Lock-in, t = 1–5 s:** every reference metric within 10 % on all five seeds
+  (worst deviations in `docs/parity-2000-five-seeds.txt`). The two engines are
+  on the same trajectory until chaos amplifies the tiny RNG difference.
+- **Statistical parity, 60 s × 5 seeds:** settled means (t = 30–60 s) within
+  10 % for every self-averaging metric and within the relaxed 50 % for the
+  global-shape metrics `I2/I1`, `I3/I1`, `flat`. Full per-metric table in
+  `docs/parity-2000-five-seeds.txt`; the run takes 134 s.
+- Reproduction: `cargo test -p murmur-gpu --test parity` (fast) and
+  `cargo test -p murmur-gpu --test parity -- --ignored` (the 5-seed
+  acceptance), or the app's
+  `cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seed 42`.
+- **Window path re-checked** (phase 0 regression after the CLI change):
+  `prime-run cargo run -p murmuration-gpu --release` prints `adapter "NVIDIA
+  GeForce GTX 1650 with Max-Q Design" on Vulkan (DiscreteGpu), driver "NVIDIA"
+  615.78.08` and creates an 948×1020 `Bgra8UnormSrgb` surface (present mode
+  Mailbox). No performance numbers are claimed here; those wait for the
+  timestamp queries of a later phase.
+- **Oracle unchanged:** the full 120 s `murmur-ref` oracle is still
+  byte-for-byte identical after the `w_xi` seam
+  (`cargo test -p murmur-ref --test oracle -- --ignored`).
+
+**PLAN changes recorded** (also in `PLAN.md`, phase 2)
+
+- **Tolerances depend on the observable.** A single 2,000-bird flock is
+  chaotic in its global shape but self-averaging in its local structure, so
+  "±10 % on each metric" is two different targets. Local statistics
+  (`|N|`, NND, cluster, alignment, radius, spread, extent, height, speed,
+  bank, centroid radius) hit ±10 %; the shape metrics (`I2/I1`, `I3/I1`,
+  `flat`) do not self-average over a minute at this size — the CPU's own
+  `I2/I1` ranged 3.2–30.4 across the five seeds — so they are compared at
+  ±50 % and are left to tighten on phase 4's larger, longer runs. A
+  short-horizon **lock-in** check (all metrics at ±10 % for the first seconds)
+  keeps a tight comparison and is what actually proves the dynamics match.
+- **Noise is an adaptation, not a target.** The GPU uses a counter-based PCG
+  stream per bird keyed by `(seed, id)`; the CPU's `ChaCha8` stream position
+  cannot be extracted. Bit-exact noise parity stays out of scope (as the stack
+  notes say), so short-horizon parity is exact only with the noise off.
+- **`w_xi` is a test seam**, not a model knob: default `params::W_XI`, so the
+  phase 1 oracle is unchanged (re-verified byte for byte after the edit).
+- **The accumulator is deferred.** `Sim::advance` runs the fixed 5 ms step
+  now; the wall-clock accumulator and the 1/120 s presentation cap belong to
+  the real-time render loop and arrive with the first render.
+- **Documented commands use `-p`.** The workspace has two binaries
+  (`murmuration-gpu` and `murmur-ref`'s `analyze`), so `cargo run` at the root
+  is ambiguous; `README.md`, `AGENTS.md` and the app now say
+  `cargo run -p murmuration-gpu`.
+
+**Open**
+
+- The brute-force neighbour search is O(N²) on purpose (phase 2). Phase 3
+  replaces it with the spatial grid and re-runs this parity.
+- The 112-byte bird record carries fields the later phases need; phase 9 may
+  shrink it with the benchmark.
+- `nn_ab` and the shape metrics are noisy at 2,000 birds; the parity table
+  shows the absolute bound next to the difference so a loose metric is visible
+  rather than hidden.

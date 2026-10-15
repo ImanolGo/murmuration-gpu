@@ -67,6 +67,8 @@ pub struct Snapshot {
     pub zigzag_k: u32,
     /// Bank model.
     pub turning: Turning,
+    /// Weight of the random force (defaults to the model's `W_XI`).
+    pub w_xi: f32,
     /// The birds.
     pub birds: Vec<Bird>,
 }

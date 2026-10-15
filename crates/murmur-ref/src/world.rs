@@ -61,6 +61,10 @@ pub struct World {
     pub arc: Option<Arc>,
     /// Target flock size the arc aims for during arrival.
     pub target_birds: usize,
+    /// Weight of the random force (Eq. 13). Defaults to the model's `W_XI`; it
+    /// is a parameter only so the CPU/GPU single-step parity check can switch
+    /// the noise off on both sides at once (see `docs/model.md`).
+    pub w_xi: f32,
     /// Per-bird random streams, so decisions are order-independent.
     rngs: Vec<ChaCha8Rng>,
     grid: Grid,
@@ -121,6 +125,7 @@ impl World {
             turning: Turning::Base,
             arc: None,
             target_birds: n,
+            w_xi: W_XI,
             rngs,
             grid,
             seed,
@@ -344,6 +349,7 @@ impl World {
                 grid,
                 escape,
                 falcon,
+                w_xi,
                 ..
             } = self;
             let mut decisions: Vec<Option<social::Decision>> =
@@ -363,6 +369,7 @@ impl World {
                         time,
                         k,
                         returning,
+                        *w_xi,
                     ));
                 }
             }
@@ -456,6 +463,7 @@ impl World {
             target_birds: self.target_birds,
             zigzag_k: self.zigzag_k,
             turning: self.turning,
+            w_xi: self.w_xi,
             birds,
         }
     }
@@ -484,6 +492,7 @@ impl World {
         world.target_birds = snapshot.target_birds;
         world.zigzag_k = snapshot.zigzag_k;
         world.turning = snapshot.turning;
+        world.w_xi = snapshot.w_xi;
         world
     }
 }

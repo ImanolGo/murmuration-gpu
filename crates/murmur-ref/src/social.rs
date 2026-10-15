@@ -47,6 +47,7 @@ pub fn decide(
     time: f32,
     zigzag_k: u32,
     returning: &[bool],
+    w_xi: f32,
 ) -> Decision {
     let p = positions[i];
     let r = radii[i];
@@ -174,8 +175,10 @@ pub fn decide(
     let speed = velocities[i].length();
     force += f_i * ((MASS / TAU) * (V0 - speed));
 
-    // Random force (Eq. 13).
-    force += random_unit(rng) * W_XI;
+    // Random force (Eq. 13). `w_xi` is the model's `W_XI`; it is a parameter
+    // only so the CPU/GPU single-step parity check can switch the noise off on
+    // both sides at once (see `docs/model.md`).
+    force += random_unit(rng) * w_xi;
 
     // Flee and flash expansion.
     force += escape::force(p, falcon, escape[i].flash_until, time);

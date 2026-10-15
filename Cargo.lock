@@ -766,7 +766,10 @@ name = "murmur-gpu"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "glam",
+ "murmur-ref",
  "pollster",
+ "rand_chacha",
  "wgpu",
 ]
 

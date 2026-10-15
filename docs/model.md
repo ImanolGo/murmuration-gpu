@@ -88,6 +88,43 @@ the model, not GPU shortcuts, and the GPU reproduces them:
   (`escape::measure_agitation`) experiments belong to PLAN.md phase 7 and are not
   in the phase 1 oracle.
 
+## Deviations specific to `murmur-gpu` (phase 2)
+
+The GPU shader (`crates/murmur-gpu/shaders/sim.wgsl`) mirrors the reference
+function for function, keeping the names and the order of operations:
+`flight::forward`/`side_of`/`body_up`/`step_bird`, `params::radius_step`,
+`escape::zigzag_roll` and `social::decide`. It deviates only where the CPU and
+GPU are genuinely different machines:
+
+- **Brute-force neighbour search.** PLAN.md phase 2 asks for the simplest
+  correct version: `decide` loops over every bird (O(N²)) instead of walking the
+  CPU's spatial hash. The set of neighbours within the radius is the same; only
+  the order the partial sums are accumulated in differs, which is what the
+  single-step parity measurement sees (1e-7 relative). Phase 3 replaces it with
+  the grid.
+- **Counter-based random stream, not `ChaCha8Rng`.** The reference draws its
+  random force from each bird's `ChaCha8` stream. A `ChaCha8Rng`'s position in
+  its stream cannot be extracted to hand to the GPU, and reproducing `rand`'s
+  float sampling exactly in WGSL is out of scope (PLAN.md lists bit-exact GPU
+  determinism as out of scope). The GPU seeds a 32-bit PCG stream per bird from
+  `(seed, id)` (`bird::initial_rng`) and advances it two draws per decision,
+  the same count and shape as `social::random_unit`. Consequence: the noise is
+  statistically equivalent but not bit-identical, so short-horizon parity is
+  exact only with the noise switched off, and long-horizon parity is
+  statistical (see `parity.rs`).
+- **`World::w_xi` is a seam, not a model change.** The random-force weight is a
+  parameter (`Snapshot::w_xi`, default `params::W_XI`) so the CPU/GPU
+  single-step check can switch the noise off on *both* engines at once and
+  compare the deterministic forces to 1e-7. The default is the model value, so
+  the `--analyze` oracle is unchanged (verified byte for byte).
+- **The bird record is 112 bytes, not PLAN.md's 64-byte sketch.** Phase 2 is the
+  correctness version; the record carries the fields the mirrored functions
+  need (steering held between decisions, the decision clock, the escape state
+  the falcon will use in phase 7) plus a 32-bit RNG state. `speed` and `fwd`
+  from the sketch are derived in the shader exactly as the reference derives
+  them, so they are not stored. The layout is guarded against the WGSL struct by
+  `tests/layout.rs`; phase 9 may shrink it with a benchmark, as PLAN.md asks.
+
 ## Known gaps (reported, not hidden)
 
 Carried over from the reference and not fixed here (fixing them would change the

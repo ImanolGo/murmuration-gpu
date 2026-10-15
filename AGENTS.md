@@ -44,11 +44,14 @@ Read this and [PLAN.md](PLAN.md) before writing code.
 ## Running on the development machine
 
 ```
-prime-run cargo run --release                     # windowed
-cargo test                                        # headless, GPU tests if available
-cargo run --release -- --bench --birds 1000000    # timings
-cargo run --release -- --parity --birds 2000 --seed 42
+prime-run cargo run -p murmuration-gpu --release          # windowed
+cargo test                                                # headless, GPU tests if available
+cargo run -p murmuration-gpu --release -- --bench --birds 1000000    # timings
+cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seed 42
 ```
+
+The workspace holds two binaries (`murmuration-gpu` and `murmur-ref`'s
+`analyze`), so `cargo run` at the root must name a package with `-p`.
 
 If the window opens on the integrated GPU, the app prints the adapter name
 at startup. Check it before reporting any measurement.

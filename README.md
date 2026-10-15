@@ -44,7 +44,7 @@ prerecorded animation, no choreographed outline and no leader.
 On hybrid-graphics laptops (NVIDIA Optimus), run on the discrete GPU:
 
 ```
-prime-run cargo run --release
+prime-run cargo run -p murmuration-gpu --release
 ```
 
 Unlike a CUDA and OpenGL setup, simulation and rendering share one wgpu
@@ -53,18 +53,18 @@ device, so there is no interop step to pair across GPUs.
 ## Getting started
 
 ```
-cargo run --release                          # a dusk flock with the default bird count
-cargo run --release -- --birds 1000000       # one million birds
-cargo run --release -- --falcon              # add an autonomous falcon
-cargo run --release -- --seed 42             # a repeatable start
+cargo run -p murmuration-gpu --release                          # a dusk flock with the default bird count
+cargo run -p murmuration-gpu --release -- --birds 1000000       # one million birds
+cargo run -p murmuration-gpu --release -- --falcon              # add an autonomous falcon
+cargo run -p murmuration-gpu --release -- --seed 42             # a repeatable start
 ```
 
 Headless tools, without opening a window:
 
 ```
-cargo run --release -- --bench --birds 1000000          # GPU timings per pass
-cargo run --release -- --parity --birds 2000 --seed 42  # GPU vs CPU reference statistics
-cargo run --release -- --analyze 120 --birds 50000      # per-second flock statistics
+cargo run -p murmuration-gpu --release -- --bench --birds 1000000          # GPU timings per pass
+cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seed 42  # GPU vs CPU reference statistics
+cargo run -p murmuration-gpu --release -- --analyze 120 --birds 50000      # per-second flock statistics
 ```
 
 Planned controls:

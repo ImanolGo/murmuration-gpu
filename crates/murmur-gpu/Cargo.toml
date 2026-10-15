@@ -9,5 +9,8 @@ repository.workspace = true
 
 [dependencies]
 bytemuck.workspace = true
+glam.workspace = true
+murmur-ref = { path = "../murmur-ref" }
 pollster.workspace = true
+rand_chacha.workspace = true
 wgpu.workspace = true

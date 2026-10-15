@@ -245,3 +245,113 @@ adapter is printed at the top of every run.
 - `nn_ab` and the shape metrics are noisy at 2,000 birds; the parity table
   shows the absolute bound next to the difference so a loose metric is visible
   rather than hidden.
+
+## Phase 3 — spatial grid and topological neighbours (2026-10-15)
+
+**Built**
+
+- `shaders/common.wgsl`: `Params`, `Bird` and the cell/bucket hash, prepended
+  (in Rust, with `format!`) to both shader modules so the structs have one
+  definition. `tests/layout.rs` now checks against this file; `Params` grew to
+  208 bytes with `buckets` and `inv_cell`.
+- `shaders/grid.wgsl`: the grid build — `grid_clear`, `grid_histogram`,
+  `grid_scan_blocks` (level-1 exclusive scan, 2048 buckets per workgroup),
+  `grid_scan_totals` (one workgroup scans the block totals, in place),
+  `grid_scan_add` (adds the block offsets back and re-seeds the scatter
+  cursor), `grid_scatter`, `grid_sort_buckets` (fixed order inside a bucket).
+  Two buffers play two roles each, so the pipeline needs only eight storage
+  buffers per stage, the WebGPU limit.
+- `shaders/sim.wgsl`: `decide` now walks the cells the radius covers through
+  `offsets`/`sorted` and keeps every bird inside the radius, mirroring
+  `Grid::for_each_within`; the neighbour sums are factored into value-returning
+  `acc_add`/`cen_add` helpers. A second entry point, `decide_bruteforce_kernel`,
+  keeps the phase 2 O(N²) walk for the acceptance test. The distance test is
+  `d² ≤ r²`, the oracle's test.
+- `crates/murmur-gpu/src/grid.rs`: the grid's buffers, its seven pipelines, the
+  sizing policy (`buckets_for`), the dispatch, and read-back helpers for the
+  unit tests.
+- `crates/murmur-gpu/src/pass.rs`: one place that records a compute dispatch,
+  with optional GPU timestamp writes (`STEP_PASSES`, `TIMESTAMPS_PER_STEP`,
+  `Timeline`).
+- `crates/murmur-gpu/src/bench.rs` and `--bench` in the app: per-pass GPU
+  timestamps at 100k, 1M and 3M birds.
+- `Sim` owns the grid, binds its buffers in the same bind group as the birds,
+  and gains `advance_bruteforce`, `advance_timeline`, `write_birds`,
+  `rebuild_grid`. `device::headless_with(features)` and adapter limits.
+
+**Measured** (GTX 1650 Max-Q, driver 615.78.08, Vulkan, `prime-run`)
+
+- **Neighbour sets match brute force:** at 2,000 birds, 1,000 steps into a
+  developed flock with every bird forced to decide, the grid and the
+  brute-force walks give the same `neighbour_count` for **2,000/2,000** birds,
+  the same centrality, and a worst steering relative error of `1.94e-6` — the
+  two paths only differ in the order they add the same seven terms.
+- **Scan and sort vs CPU:** the bucket histogram's exclusive prefix sums match
+  a CPU computation exactly, and the sorted order is a permutation grouped by
+  bucket, at 500, 2,000 and 5,000 birds (random initial conditions).
+- **Phase 2 parity still passes:** single step `1.065e-7` (idem noise-on
+  `7.216e-8`); lock-in on all five seeds; 60 s × 5 seeds settled means — full
+  table regenerated in `docs/parity-2000-five-seeds.txt` (no `FAIL`), via
+  `cargo run -p murmuration-gpu --release -- --parity --birds 2000`.
+- **`--bench`** (10 timed steps, in `docs/bench-gtx1650.txt`):
+
+  | birds | step | grid build | decide | integrate | bird-steps/s |
+  |------:|-----:|-----------:|-------:|----------:|-------------:|
+  | 100,000 | 14.95 ms | 0.43 ms | 14.05 ms | 0.48 ms | 6.7 M |
+  | 1,000,000 | 162.9 ms | 7.78 ms | 150.5 ms | 4.6 ms | 6.1 M |
+  | 3,000,000 | 498.8 ms | 24.98 ms | 460.1 ms | 13.7 ms | 6.0 M |
+
+  The cost is almost all in `decide`, and it scales linearly with the bird
+  count: the number of candidates per query is set by the 4 m cell size against
+  a ~1.5 m perception radius, not by N. That is the phase 9 target, not this
+  phase's; the whole grid build is 3–5 % of the step.
+- **Window path re-checked** after the device-limits change: `prime-run
+  ./target/release/murmuration-gpu` still prints the GTX 1650 on Vulkan and a
+  948×1020 `Bgra8UnormSrgb` surface (Mailbox).
+
+**Found and fixed: the scatter was not reproducible.** The first version used
+the atomic scatter order directly. Two runs of the same command then gave
+slightly different flocks, which the lock-in test saw as seed 4 passing in one
+run and failing in the next (`nn_ab` moved by more than its own tolerance). A
+parallel atomic scatter cannot fix an order, so `grid_sort_buckets` sorts each
+bucket's range by bird index — a few milliseconds, since the table is sized at
+about two birds per bucket. Repeated runs are now byte-identical, which the
+model (deterministic, AGENTS.md) and the test suite both need.
+
+**Changed: the lock-in check runs with the random force off.** It used to run
+noise-on, i.e. compare two independent realizations, which is the same weak
+statement the 60 s run makes. Measuring the divergence showed why that could
+not stay: even *without* noise the mean bird-to-bird difference reaches 0.3 m
+after 1 s and 3.7 m after 5 s (a ~1e-7 per-step difference amplified), so the
+comparison can only be about the same path, not about averaging independent
+runs. With the noise off every metric stays within 10 % for 5 s, the worst
+being `nn_ab` at 40 % of its bound. This is a change to a phase 2 check and is
+recorded in `PLAN.md` phase 2's spirit and in `docs/model.md`.
+
+**PLAN changes recorded** (also in `PLAN.md`, phase 3)
+
+- **Radius set, not k-nearest.** PLAN.md phase 3's "keeps the k = 7 nearest" is
+  wrong about the model; `N_C = 6.5` is a target the adaptive radius is drawn
+  towards, and `decide` uses every bird inside it, plus a 2R walk for
+  centrality. The grid mirrors `Grid::for_each_within`.
+- **Unbounded worlds: hash table, not recentring.** It mirrors the oracle and
+  needs no reduction pass. The table is sized from the bird count; the cell
+  size is the model constant `GRID_CELL = 4.0 m`, so the sets are identical.
+- **`sorted` holds bird indices, not reordered records.** The reorder is via
+  indirection; moving the 112-byte records is left to phase 9.
+- **One extra pass, not in the plan,** fixes the order inside a bucket so the
+  step is reproducible (see above).
+- **The device asks for the adapter's limits,** because 3M birds is 336 MB in
+  one storage buffer, past the WebGPU defaults. Bench IC is synthetic (a
+  settled-density cube) so the 3M timing is not of a state the model never
+  reaches.
+
+**Open**
+
+- `decide` dominates the benchmark: the 4 m cells put ~250 candidates in a
+  1.5 m radius query. Phase 9 will size the cell and the bucket table against
+  the benchmark, and may reorder the records so the query reads them
+  contiguously.
+- The grid reuses two buffers for two roles to stay at the eight-storage-buffer
+  limit; if phase 9 wants more grid state it will need a different packing.
+- `nn_ab` and the shape metrics remain noisy at 2,000 birds, as phase 2 found.

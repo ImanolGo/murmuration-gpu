@@ -61,10 +61,11 @@ fn single_step_noise_is_the_expected_floor() {
     );
 }
 
-/// Both engines stepped together stay on the same trajectory: every reference
-/// metric within its tolerance for the first five seconds. This is the check
-/// that the shader mirrors the dynamics, not merely the statistics; the 60 s
-/// statistical run below cannot see it, because the trajectories diverge.
+/// Both engines stepped together (random force off on both) stay on the same
+/// trajectory: every reference metric within its tolerance for the first five
+/// seconds. This is the check that the shader mirrors the dynamics, not merely
+/// the statistics; the 60 s statistical run below cannot see it, because the
+/// trajectories diverge.
 #[test]
 fn both_engines_lock_in_for_the_first_seconds() {
     let Some(gpu) = gpu_or_skip() else {

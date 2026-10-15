@@ -8,8 +8,12 @@
 //   decide                                   <- social.rs::decide
 //   the escape fields                        <- escape.rs
 //
-// Phase 2 is the simplest correct version: the neighbour search inside `decide`
-// is brute force, O(N^2). Phase 3 replaces it with the spatial grid.
+// The neighbour search inside `decide` is the spatial grid built by
+// `grid.wgsl`: each bird walks the cells its adaptive radius covers and keeps
+// every bird inside it, exactly the set the CPU oracle's `Grid::for_each_within`
+// returns. `decide_bruteforce_kernel` is the same decision with an O(N^2) scan
+// over all birds; it is kept so the phase 3 acceptance test can compare the two
+// neighbour sets, and is not used by the sim loop.
 //
 // The random force is the one documented adaptation: the CPU oracle draws it
 // from each bird's ChaCha8 stream, which cannot be extracted (see
@@ -17,36 +21,10 @@
 // (seed, id). Bit-exact noise parity is out of scope (PLAN.md), so the parity
 // check tolerates it and the single-step test switches it off on both engines.
 //
-// Two ordered compute passes per step: `decide` reads the whole flock from
-// `src` and writes `dst` (a faithful simultaneous snapshot, exactly like the
-// reference reading `self` once); `integrate` then advances `dst` in place.
-// `tick` advances the shared clock so many steps can be encoded into one
-// command buffer without a queue write per step.
-
-struct Params {
-    dt: f32, du: f32, time: f32, turning: u32,
-    v0: f32, mass: f32, g: f32, l0: f32,
-    d0: f32, tau: f32, tau_roll: f32, max_roll_rate: f32,
-    tau_spin: f32, max_bank: f32, v_min: f32, v_max: f32,
-    n_c: f32, r_max: f32, radius_lerp: f32, r_h: f32,
-    sigma: f32, w_sep: f32, w_align: f32, w_coh: f32,
-    blind_cos: f32, w_xi: f32, r_roost: f32, w_roost_h: f32,
-    roost_turn_margin: f32, w_roost_v: f32, h_roost_v: f32, z0: f32,
-    flap_hz: f32, flap_amplitude: f32, r_threat: f32, w_flee: f32,
-    r_flash: f32, v_flash: f32, w_flash: f32, flash_duration: f32,
-    zigzag_max_roll: f32, zigzag_duration: f32, zigzag_cooldown: f32, reed_top: f32,
-    n: u32, zigzag_k: u32, seed: u32, pad: u32,
-}
-
-struct Bird {
-    pos: vec3<f32>, roll: f32,
-    vel: vec3<f32>, spin: f32,
-    steering: vec3<f32>, radius: f32,
-    next_decision: f32, centrality: f32, flap_phase: f32, flap_amp: f32,
-    neighbour_count: u32, returning: u32, id: u32, rng: u32,
-    alarmed: u32, zigzag_active: u32, zigzag_sign: f32, zigzag_start: f32,
-    cooldown_until: f32, flash_until: f32, pad0: u32, pad1: u32,
-}
+// One step is: `tick`, the grid build (see grid.wgsl), `decide`, which reads the
+// whole flock from `src` and writes `dst` (a faithful simultaneous snapshot,
+// exactly like the reference reading `self` once), then `integrate`, which
+// advances `dst` in place.
 
 struct Clock {
     time: f32,
@@ -67,12 +45,33 @@ struct StepOut {
     spin: f32,
 }
 
+// The neighbourhood accumulators of `social::decide`, gathered in one walk.
+struct Acc {
+    sep: vec3<f32>,
+    coh: vec3<f32>,
+    align: vec3<f32>,
+    n_all: u32,
+    n_star: u32,
+    n_align: u32,
+    zigzag_neighbours: u32,
+    zigzag_sign_sum: f32,
+    returning_neighbours: u32,
+}
+
+// The centrality accumulator: a wider walk, position only.
+struct Cen {
+    csum: vec3<f32>,
+    n_g: u32,
+}
+
 const TAU: f32 = 6.283185307179586;
 
-@group(0) @binding(0) var<uniform> P: Params;
 @group(0) @binding(1) var<storage, read> src: array<Bird>;
 @group(0) @binding(2) var<storage, read_write> dst: array<Bird>;
 @group(0) @binding(3) var<storage, read_write> clock: Clock;
+@group(0) @binding(4) var<storage, read_write> bucket: array<u32>;
+@group(0) @binding(6) var<storage, read_write> offsets: array<u32>;
+@group(0) @binding(7) var<storage, read_write> sorted: array<u32>;
 
 // --- flight.rs -------------------------------------------------------------
 
@@ -197,106 +196,195 @@ fn radius_step(r: f32, n: u32) -> f32 {
     return clamp(r * factor, P.r_h, P.r_max);
 }
 
-// --- random (documented adaptation) ----------------------------------------
+// --- the two neighbourhood walks -------------------------------------------
+//
+// `Acc` and `Cen` are gathered here, so `decide` is the same whichever walk
+// filled them. The accumulation order inside `acc_add` is `social::decide`'s.
 
-// One PCG step of the per-bird stream, mirroring `initial_rng` in bird.rs. The
-// CPU oracle draws its random force from ChaCha8 instead; bit-exact noise
-// parity is out of scope (PLAN.md), so this is kept inline where it is used.
+fn acc_empty() -> Acc {
+    return Acc(
+        vec3<f32>(0.0), vec3<f32>(0.0), vec3<f32>(0.0),
+        0u, 0u, 0u, 0u, 0.0, 0u,
+    );
+}
+
+fn acc_add(acc: Acc, other: Bird, d: vec3<f32>, dist: f32, f_i: vec3<f32>, time: f32) -> Acc {
+    var a = acc;
+    a.n_all += 1u;
+    a.returning_neighbours += other.returning;
+    let dhat = d / max(dist, 1e-6);
+
+    // Separation over all neighbours, no blind angle (Eq. 4).
+    var g = 1.0;
+    if dist > P.r_h {
+        g = exp(-((dist - P.r_h) * (dist - P.r_h)) / (2.0 * P.sigma * P.sigma));
+    }
+    a.sep -= dhat * g;
+
+    // Cohesion uses spatial awareness on all sides; alignment keeps the rear
+    // blind sector.
+    if dist > P.r_h {
+        a.coh += dhat;
+        a.n_star += 1u;
+    }
+    if dot(f_i, dhat) >= P.blind_cos {
+        a.align += forward(other.vel);
+        a.n_align += 1u;
+    }
+
+    // Neighbours whose zigzag is old enough to have been perceived.
+    let age = time - other.zigzag_start;
+    if other.zigzag_active != 0u && age >= P.du {
+        a.zigzag_neighbours += 1u;
+        a.zigzag_sign_sum += other.zigzag_sign;
+    }
+    return a;
+}
+
+fn cen_empty() -> Cen {
+    return Cen(vec3<f32>(0.0), 0u);
+}
+
+fn cen_add(cen: Cen, d: vec3<f32>, dist: f32) -> Cen {
+    var c = cen;
+    c.csum += d / max(dist, 1e-6);
+    c.n_g += 1u;
+    return c;
+}
+
+// Walks the cells the radius covers and keeps every bird inside it, the same
+// set `Grid::for_each_within` visits. A bucket can hold birds from several cells
+// (the table is smaller than the world), so each candidate is kept only when its
+// own cell matches the one being queried; that also stops a bird being counted
+// twice when two query cells hash to the same bucket.
+fn gather_grid(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
+    var acc = acc_empty();
+    let lo = cell_of(p - vec3<f32>(radius));
+    let hi = cell_of(p + vec3<f32>(radius));
+    let r2 = radius * radius;
+    for (var cz = lo.z; cz <= hi.z; cz = cz + 1) {
+        for (var cy = lo.y; cy <= hi.y; cy = cy + 1) {
+            for (var cx = lo.x; cx <= hi.x; cx = cx + 1) {
+                let cell = vec3<i32>(cx, cy, cz);
+                let b = bucket_of(cell);
+                let end = offsets[b + 1u];
+                for (var s = offsets[b]; s < end; s = s + 1u) {
+                    let j = sorted[s];
+                    if j == i {
+                        continue;
+                    }
+                    let other = src[j];
+                    if any(cell_of(other.pos) != cell) {
+                        continue;
+                    }
+                    let d = other.pos - p;
+                    let d2 = dot(d, d);
+                    if d2 <= r2 {
+                        acc = acc_add(acc, other, d, sqrt(d2), f_i, time);
+                    }
+                }
+            }
+        }
+    }
+    return acc;
+}
+
+// The same walk over the 2R_i box, for centrality (Eq. 7).
+fn gather_grid_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
+    var cen = cen_empty();
+    let lo = cell_of(p - vec3<f32>(radius));
+    let hi = cell_of(p + vec3<f32>(radius));
+    let r2 = radius * radius;
+    for (var cz = lo.z; cz <= hi.z; cz = cz + 1) {
+        for (var cy = lo.y; cy <= hi.y; cy = cy + 1) {
+            for (var cx = lo.x; cx <= hi.x; cx = cx + 1) {
+                let cell = vec3<i32>(cx, cy, cz);
+                let b = bucket_of(cell);
+                let end = offsets[b + 1u];
+                for (var s = offsets[b]; s < end; s = s + 1u) {
+                    let j = sorted[s];
+                    if j == i {
+                        continue;
+                    }
+                    let other = src[j];
+                    if any(cell_of(other.pos) != cell) {
+                        continue;
+                    }
+                    let d = other.pos - p;
+                    let d2 = dot(d, d);
+                    if d2 <= r2 {
+                        cen = cen_add(cen, d, sqrt(d2));
+                    }
+                }
+            }
+        }
+    }
+    return cen;
+}
+
+// The phase 2 walk: every other bird, in order. Kept for the acceptance test.
+fn gather_bruteforce(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
+    var acc = acc_empty();
+    let n = P.n;
+    let r2 = radius * radius;
+    for (var j = 0u; j < n; j = j + 1u) {
+        if j == i {
+            continue;
+        }
+        let other = src[j];
+        let d = other.pos - p;
+        let d2 = dot(d, d);
+        if d2 <= r2 {
+            acc = acc_add(acc, other, d, sqrt(d2), f_i, time);
+        }
+    }
+    return acc;
+}
+
+fn gather_bruteforce_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
+    var cen = cen_empty();
+    let n = P.n;
+    let r2 = radius * radius;
+    for (var j = 0u; j < n; j = j + 1u) {
+        if j == i {
+            continue;
+        }
+        let d = src[j].pos - p;
+        let d2 = dot(d, d);
+        if d2 <= r2 {
+            cen = cen_add(cen, d, sqrt(d2));
+        }
+    }
+    return cen;
+}
 
 // --- social.rs::decide -----------------------------------------------------
 
-fn decide(i: u32, time: f32) -> Bird {
-    var b = src[i];
-    let n = P.n;
-
+// The decision itself, once a walk has filled the accumulators (the body of
+// `social::decide` from the cohesion force on).
+fn resolve(b_in: Bird, time: f32, r: f32, f_i: vec3<f32>, acc: Acc, cen: Cen) -> Bird {
+    var b = b_in;
     let p = b.pos;
-    let r = b.radius;
-    let f_i = forward(b.vel);
-
-    var sep = vec3<f32>(0.0);
-    var coh = vec3<f32>(0.0);
-    var align = vec3<f32>(0.0);
-    var n_all = 0u;
-    var n_star = 0u;
-    var n_align = 0u;
-    var zigzag_neighbours = 0u;
-    var zigzag_sign_sum = 0.0;
-    var returning_neighbours = 0u;
-
-    // One pass over the topological neighbourhood (Eq. 3), brute force here.
-    for (var j = 0u; j < n; j = j + 1u) {
-        if j == i {
-            continue;
-        }
-        let d = src[j].pos - p;
-        let dist = length(d);
-        if dist > r {
-            continue;
-        }
-        n_all += 1u;
-        returning_neighbours += src[j].returning;
-        let dhat = d / max(dist, 1e-6);
-
-        // Separation over all neighbours, no blind angle (Eq. 4).
-        var g = 1.0;
-        if dist > P.r_h {
-            g = exp(-((dist - P.r_h) * (dist - P.r_h)) / (2.0 * P.sigma * P.sigma));
-        }
-        sep -= dhat * g;
-
-        // Cohesion uses spatial awareness on all sides; alignment keeps the
-        // rear blind sector.
-        if dist > P.r_h {
-            coh += dhat;
-            n_star += 1u;
-        }
-        if dot(f_i, dhat) >= P.blind_cos {
-            align += forward(src[j].vel);
-            n_align += 1u;
-        }
-
-        // Neighbours whose zigzag is old enough to have been perceived.
-        let age = time - src[j].zigzag_start;
-        if src[j].zigzag_active != 0u && age >= P.du {
-            zigzag_neighbours += 1u;
-            zigzag_sign_sum += src[j].zigzag_sign;
-        }
-    }
 
     var force = vec3<f32>(0.0);
-    if n_all > 0u {
-        force += sep * (P.w_sep / f32(n_all));
+    if acc.n_all > 0u {
+        force += acc.sep * (P.w_sep / f32(acc.n_all));
     }
 
-    // Centrality over a wider radius, 2R_i (Eq. 7).
-    var csum = vec3<f32>(0.0);
-    var n_g = 0u;
-    for (var j = 0u; j < n; j = j + 1u) {
-        if j == i {
-            continue;
-        }
-        let d = src[j].pos - p;
-        let dist = length(d);
-        if dist > 2.0 * r {
-            continue;
-        }
-        csum += d / max(dist, 1e-6);
-        n_g += 1u;
-    }
     var centrality = 0.0;
-    if n_g > 0u {
-        centrality = length(csum) / f32(n_g);
+    if cen.n_g > 0u {
+        centrality = length(cen.csum) / f32(cen.n_g);
     }
 
     // Cohesion, stronger at the border through C_i (Eq. 5).
-    if n_star > 0u {
-        force += normalize_or_zero(coh) * (P.w_coh * centrality);
+    if acc.n_star > 0u {
+        force += normalize_or_zero(acc.coh) * (P.w_coh * centrality);
     }
 
     // Alignment (Eq. 8).
     var a = vec3<f32>(0.0);
-    if n_align > 0u {
-        a = align / f32(n_align) - f_i;
+    if acc.n_align > 0u {
+        a = acc.align / f32(acc.n_align) - f_i;
     }
     force += a * P.w_align;
 
@@ -305,9 +393,9 @@ fn decide(i: u32, time: f32) -> Bird {
     let dist_h = length(horiz);
     let near_boundary = dist_h > P.r_roost * 0.8;
     let heading_out = dist_h > 1.0 && dot(f_i, horiz / dist_h) > -0.8;
-    var returning = src[i].returning != 0u
+    var returning = b.returning != 0u
         || dist_h > P.r_roost
-        || (near_boundary && heading_out && returning_neighbours >= 2u);
+        || (near_boundary && heading_out && acc.returning_neighbours >= 2u);
     if returning && dist_h > 1.0 {
         let nrm = horiz / dist_h;
         let side = side_of(f_i);
@@ -345,18 +433,18 @@ fn decide(i: u32, time: f32) -> Bird {
     let r_rand = sqrt(max(1.0 - z_rand * z_rand, 0.0));
     force += vec3<f32>(r_rand * cos(theta), r_rand * sin(theta), z_rand) * P.w_xi;
 
-    // Flee and flash expansion (escape::force) are inert in phase 2: there is
-    // no falcon, so `falcon` is None and it contributes nothing. Phase 7 adds
-    // it. The copying rule below is likewise inert without an alarmed bird.
+    // Flee and flash expansion (escape::force) are inert before phase 7: there
+    // is no falcon, so `falcon` is None and it contributes nothing. The copying
+    // rule below is likewise inert without an alarmed bird.
     var start_zigzag = 0.0;
     if b.alarmed == 0u
         && b.zigzag_active == 0u
         && time >= b.cooldown_until
-        && zigzag_neighbours >= P.zigzag_k
+        && acc.zigzag_neighbours >= P.zigzag_k
     {
-        if zigzag_sign_sum > 0.0 {
+        if acc.zigzag_sign_sum > 0.0 {
             start_zigzag = 1.0;
-        } else if zigzag_sign_sum < 0.0 {
+        } else if acc.zigzag_sign_sum < 0.0 {
             start_zigzag = -1.0;
         } else {
             b.rng = b.rng * 747796405u + 2891336453u;
@@ -371,8 +459,8 @@ fn decide(i: u32, time: f32) -> Bird {
     }
 
     b.steering = force;
-    b.radius = radius_step(r, n_all);
-    b.neighbour_count = n_all;
+    b.radius = radius_step(r, acc.n_all);
+    b.neighbour_count = acc.n_all;
     b.centrality = centrality;
     b.returning = u32(returning);
     if start_zigzag != 0.0 {
@@ -384,6 +472,24 @@ fn decide(i: u32, time: f32) -> Bird {
     return b;
 }
 
+// The decided bird, from the grid walk.
+fn decide(i: u32, time: f32) -> Bird {
+    let b = src[i];
+    let f_i = forward(b.vel);
+    let acc = gather_grid(b.pos, b.radius, i, f_i, time);
+    let cen = gather_grid_centrality(b.pos, 2.0 * b.radius, i);
+    return resolve(b, time, b.radius, f_i, acc, cen);
+}
+
+// The same decision from the brute-force walk (phase 3 acceptance test only).
+fn decide_bruteforce(i: u32, time: f32) -> Bird {
+    let b = src[i];
+    let f_i = forward(b.vel);
+    let acc = gather_bruteforce(b.pos, b.radius, i, f_i, time);
+    let cen = gather_bruteforce_centrality(b.pos, 2.0 * b.radius, i);
+    return resolve(b, time, b.radius, f_i, acc, cen);
+}
+
 @compute @workgroup_size(256)
 fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
@@ -393,6 +499,20 @@ fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     let time = clock.time;
     if time >= src[i].next_decision {
         dst[i] = decide(i, time);
+    } else {
+        dst[i] = src[i];
+    }
+}
+
+@compute @workgroup_size(256)
+fn decide_bruteforce_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if i >= P.n {
+        return;
+    }
+    let time = clock.time;
+    if time >= src[i].next_decision {
+        dst[i] = decide_bruteforce(i, time);
     } else {
         dst[i] = src[i];
     }
@@ -434,8 +554,8 @@ fn integrate_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 // --- clock -----------------------------------------------------------------
 
-// Advances the shared clock once per integration step, so the two passes see
-// the same `time` and many steps fit in one command buffer.
+// Advances the shared clock once per integration step, so the passes see the
+// same `time` and many steps fit in one command buffer.
 @compute @workgroup_size(1)
 fn tick_kernel() {
     clock.step += 1u;

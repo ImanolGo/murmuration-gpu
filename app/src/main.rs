@@ -11,13 +11,18 @@
 //! simulation from the same state and compares the reference statistics each
 //! second, exactly what phase 2's acceptance asks for.
 //!
+//! Phase 3 adds `--bench`: per-pass GPU timestamps at 100k, 1M and 3M birds,
+//! from timestamp queries (AGENTS.md forbids any other source for performance).
+//!
 //! Usage:
 //!   prime-run cargo run -p murmuration-gpu --release                              # window
 //!   cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seconds 60
+//!   cargo run -p murmuration-gpu --release -- --bench
 
 use std::error::Error;
 use std::sync::Arc;
 
+use murmur_gpu::bench;
 use murmur_gpu::device::{self, DeviceError, Gpu};
 use murmur_gpu::parity;
 use murmur_render::sky;
@@ -36,24 +41,33 @@ use winit::{
 struct Args {
     /// Run the headless CPU/GPU parity check instead of the window.
     parity: bool,
+    /// Run the headless per-pass benchmark instead of the window.
+    bench: bool,
     /// Number of birds.
     birds: usize,
+    /// Whether `--birds` was given (the benchmark has its own default set).
+    birds_given: bool,
     /// First seed; the sweep uses `seed .. seed + seeds`.
     seed: u64,
     /// Simulated seconds per seed.
     seconds: u32,
     /// Number of seeds.
     seeds: u32,
+    /// Timed steps per bird count in `--bench`.
+    steps: u32,
 }
 
 impl Default for Args {
     fn default() -> Self {
         Self {
             parity: false,
+            bench: false,
             birds: 2000,
+            birds_given: false,
             seed: 1,
             seconds: 60,
             seeds: 5,
+            steps: 10,
         }
     }
 }
@@ -64,13 +78,19 @@ fn parse_args() -> Result<Args, String> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--parity" => args.parity = true,
-            "--birds" => args.birds = value(&mut it, "--birds")?.parse().map_err(err)?,
+            "--bench" => args.bench = true,
+            "--birds" => {
+                args.birds = value(&mut it, "--birds")?.parse().map_err(err)?;
+                args.birds_given = true;
+            }
             "--seed" => args.seed = value(&mut it, "--seed")?.parse().map_err(err)?,
             "--seconds" => args.seconds = value(&mut it, "--seconds")?.parse().map_err(err)?,
             "--seeds" => args.seeds = value(&mut it, "--seeds")?.parse().map_err(err)?,
+            "--steps" => args.steps = value(&mut it, "--steps")?.parse().map_err(err)?,
             "-h" | "--help" => {
                 println!(
-                    "murmuration-gpu [--parity] [--birds N] [--seed S] [--seconds T] [--seeds K]"
+                    "murmuration-gpu [--parity | --bench] [--birds N] [--seed S] \
+                     [--seconds T] [--seeds K] [--steps N]"
                 );
                 std::process::exit(0);
             }
@@ -135,6 +155,59 @@ fn open() -> Result<Gpu, Box<dyn Error>> {
     }
 }
 
+/// The headless per-pass benchmark (PLAN.md phase 3 acceptance).
+fn run_bench(args: &Args) -> Result<(), Box<dyn Error>> {
+    let gpu = match device::headless_with(
+        wgpu::PowerPreference::HighPerformance,
+        wgpu::Features::TIMESTAMP_QUERY,
+    ) {
+        Ok(gpu) => gpu,
+        Err(DeviceError::NoAdapter(error)) => {
+            return Err(format!("no suitable GPU adapter: {error}").into());
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let info = gpu.info();
+    println!("# murmuration-gpu --bench steps={}", args.steps);
+    println!(
+        "# adapter \"{}\" on {:?} ({:?}), driver \"{}\" {}",
+        info.name, info.backend, info.device_type, info.driver, info.driver_info
+    );
+    if !gpu
+        .device
+        .features()
+        .contains(wgpu::Features::TIMESTAMP_QUERY)
+    {
+        println!("# this adapter has no TIMESTAMP_QUERY feature; --bench skipped");
+        return Ok(());
+    }
+
+    // The acceptance asks for 100k, 1M and 3M; `--birds` picks one instead.
+    let counts: Vec<usize> = if args.birds_given {
+        vec![args.birds]
+    } else {
+        vec![100_000, 1_000_000, 3_000_000]
+    };
+    for birds in counts {
+        let report = bench::run(&gpu, birds, args.steps);
+        println!(
+            "# {} birds, {} timed steps (after warm-up)",
+            report.birds, report.steps
+        );
+        println!("  {:<18} {:>12}", "pass", "ms");
+        for pass in &report.passes {
+            println!("  {:<18} {:>12.4}", pass.pass, pass.millis);
+        }
+        println!("  {:<18} {:>12.4}", "step total", report.step_millis());
+        println!(
+            "  {:<18} {:>12.0}",
+            "bird-steps/s",
+            report.birds_per_second()
+        );
+    }
+    Ok(())
+}
+
 fn main() {
     let args = match parse_args() {
         Ok(args) => args,
@@ -146,6 +219,13 @@ fn main() {
     if args.parity {
         if let Err(error) = run_parity(&args) {
             eprintln!("murmuration-gpu: --parity failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if args.bench {
+        if let Err(error) = run_bench(&args) {
+            eprintln!("murmuration-gpu: --bench failed: {error}");
             std::process::exit(1);
         }
         return;

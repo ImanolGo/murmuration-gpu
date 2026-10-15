@@ -1,0 +1,55 @@
+// Structs and helpers shared by the two shader modules of the simulation.
+//
+// `sim.wgsl` (the per-bird force step and flight integration) and `grid.wgsl`
+// (the spatial grid that replaces the brute-force neighbour search, PLAN.md
+// phase 3) are both compiled with this file prepended, so `Params`, `Bird` and
+// the cell/bucket hash have exactly one definition. The Rust side mirrors
+// `Params` and `Bird` in `params.rs` and `bird.rs` and checks them field for
+// field in `tests/layout.rs`. The grid buffer bindings are declared in the two
+// modules that use them, not here.
+
+struct Params {
+    dt: f32, du: f32, time: f32, turning: u32,
+    v0: f32, mass: f32, g: f32, l0: f32,
+    d0: f32, tau: f32, tau_roll: f32, max_roll_rate: f32,
+    tau_spin: f32, max_bank: f32, v_min: f32, v_max: f32,
+    n_c: f32, r_max: f32, radius_lerp: f32, r_h: f32,
+    sigma: f32, w_sep: f32, w_align: f32, w_coh: f32,
+    blind_cos: f32, w_xi: f32, r_roost: f32, w_roost_h: f32,
+    roost_turn_margin: f32, w_roost_v: f32, h_roost_v: f32, z0: f32,
+    flap_hz: f32, flap_amplitude: f32, r_threat: f32, w_flee: f32,
+    r_flash: f32, v_flash: f32, w_flash: f32, flash_duration: f32,
+    zigzag_max_roll: f32, zigzag_duration: f32, zigzag_cooldown: f32, reed_top: f32,
+    n: u32, zigzag_k: u32, seed: u32, buckets: u32,
+    inv_cell: f32, pad1: f32, pad2: f32, pad3: u32,
+}
+
+struct Bird {
+    pos: vec3<f32>, roll: f32,
+    vel: vec3<f32>, spin: f32,
+    steering: vec3<f32>, radius: f32,
+    next_decision: f32, centrality: f32, flap_phase: f32, flap_amp: f32,
+    neighbour_count: u32, returning: u32, id: u32, rng: u32,
+    alarmed: u32, zigzag_active: u32, zigzag_sign: f32, zigzag_start: f32,
+    cooldown_until: f32, flash_until: f32, pad0: u32, pad1: u32,
+}
+
+@group(0) @binding(0) var<uniform> P: Params;
+
+// The grid cell a position falls in: `floor(p / cell)`, matching `Grid::coord`
+// in `murmur-ref/src/neighbours.rs`. `inv_cell` is `1 / params::GRID_CELL`, so
+// the CPU oracle and the GPU assign the same cell and the neighbour sets agree.
+fn cell_of(p: vec3<f32>) -> vec3<i32> {
+    return vec3<i32>(floor(p * P.inv_cell));
+}
+
+// The hash bucket of a cell, matching `Grid::hash` in the CPU oracle. The CPU
+// masks to its own bucket count; only the count differs here (the GPU sizes the
+// table from the bird count), which never changes which neighbours are found
+// because every query also checks the exact cell.
+fn bucket_of(c: vec3<i32>) -> u32 {
+    let h = bitcast<u32>(c.x) * 73856093u
+        ^ bitcast<u32>(c.y) * 19349663u
+        ^ bitcast<u32>(c.z) * 83492791u;
+    return h & (P.buckets - 1u);
+}

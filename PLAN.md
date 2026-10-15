@@ -150,7 +150,7 @@ agree across five seeds (within 10 %, or the relaxed 50 % for the chaotic shape
 metrics) with the full table recorded in `docs/parity-2000-five-seeds.txt`.
 Details in `docs/progress.md`.
 
-## Phase 3 — Spatial grid and topological neighbours
+## Phase 3 — Spatial grid and topological neighbours (done)
 
 - Uniform grid sized from the typical perception radius. Passes:
   1. compute cell index per bird;
@@ -167,6 +167,47 @@ Details in `docs/progress.md`.
 **Accept:** at 2,000 birds the neighbour sets match brute force for at least
 99 % of birds. Parity from phase 2 still passes. `--bench` reports per-pass
 GPU timestamps at 100k, 1M and 3M birds.
+
+**Update (2026-10-15) — the neighbour set is radius-based, not k-nearest.**
+This phase's second bullet said "keeps the k = 7 nearest in a small register
+array". The model does not do that. `N_C = 6.5` is the *target* count the
+adaptive radius `radius_step` is driven towards; `decide` then uses *every*
+bird inside that radius `r` (and a second walk over `2r` for centrality). A
+hard k = 7 cap would change `n_all`, the separation and alignment sums, the
+centrality, and the radius update itself. AGENTS.md makes `murmur-ref` the
+specification, so phase 3 keeps the radius set and the "k = 7" wording is
+dropped. The GPU grid therefore reproduces `Grid::for_each_within`, not a
+k-nearest structure.
+
+**Update (2026-10-15) — unbounded worlds and the sorted array.** The hash
+table was chosen over per-step recentring: it mirrors the CPU oracle's
+`neighbours.rs` exactly, needs no reduction or second grid pass, and keeps
+working when birds roam far from the roost. The table is `next_power_of_two(2N)`
+clamped to `[2^16, 2^22]`. The table size never changes which neighbours are
+found (every query also checks the exact cell), so it is a free performance
+knob; the cell size is the model constant `GRID_CELL = 4.0 m`, shared with the
+oracle so the sets are identical. The scatter writes bird *indices* into a
+`sorted` array rather than physically reordering the 112-byte bird records: the
+reorder the plan asks for is provided through that indirection, and moving the
+records themselves is left to phase 9 when the record shrinks. One extra pass,
+not in the plan, sorts each bucket's range by bird index: a parallel scatter's
+atomic order is not reproducible, and the model (and the tests) need the GPU to
+be. The grid is two of its buffers playing two roles each, to stay inside the
+WebGPU limit of eight storage buffers per stage.
+
+**Met (2026-10-15):** at 2,000 birds the grid's neighbour sets match the
+brute-force walk for 2,000/2,000 birds (worst steering relative error 1.9e-6);
+the scan and the bucket sort match a CPU computation on random flocks at 500,
+2,000 and 5,000 birds; phase 2's parity still passes (single step `1.065e-7`,
+lock-in, and all five seeds settled). The lock-in check now runs with the
+random force off: with independent noise the two engines are different
+realizations and it was only comparing statistics, and the discovery that even
+a noise-free run diverges (0.3 m after 1 s) is what made that the right choice.
+`--bench` reports per-pass GPU timestamps at 100k (14.9 ms/step), 1M (163 ms)
+and 3M (499 ms) birds on the GTX 1650; the table is in
+`docs/bench-gtx1650.txt` and the cost is dominated by `decide`, whose candidate
+count comes from the 4 m cells rather than from the bird count. Details in
+`docs/progress.md`.
 
 ## Phase 4 — Full flight model
 

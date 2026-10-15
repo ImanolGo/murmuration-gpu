@@ -7,9 +7,14 @@
 //! - [`single_step`]: one step from the same state, noise off on both engines,
 //!   matches to about 1e-4 relative error per bird. This is the strongest test
 //!   that the shader mirrors the reference function for function.
-//! - [`lock_in`]: both engines stepped together for a few seconds, before chaos
-//!   dominates, must agree on *every* reference metric. At 2,000 birds and the
-//!   seeds tried, every metric stays within 10 % for at least 8 s.
+//! - [`lock_in`]: both engines stepped together for a few seconds, noise off on
+//!   both, before chaos dominates. They follow the same deterministic path, but
+//!   a per-step difference of about 1e-7 m (the GPU sums a bird's neighbours in
+//!   a different order and the two libm's round `exp`/`pow` differently) grows
+//!   quickly: the mean bird-to-bird divergence reaches 0.3 m after one second
+//!   and 3.7 m after five. The aggregate metrics self-average, so every one of
+//!   them still agrees within 10 % for 5 s at 2,000 birds; the worst is `nn_ab`
+//!   at 40 % of its bound.
 //! - [`run_seed`]: 60 simulated seconds. The self-averaging flock statistics
 //!   (neighbour count, nearest-neighbour distance, density, speed, height,
 //!   extent) agree within 10 %; the global *shape* metrics (`I2/I1`, `I3/I1`,
@@ -165,14 +170,20 @@ pub fn single_step_noise_floor(gpu: &Gpu, world: &World) -> f32 {
     max
 }
 
-/// Steps both engines together for `seconds`, comparing every metric each
-/// second while the trajectories are still locked. Returns the worst deviation
-/// seen per metric. Every metric is compared at a tight 10 % here, including
-/// the global-shape ones that the 60 s run has to relax: within the lock-in
-/// window they agree closely too.
+/// Steps both engines together for `seconds` with the random force off, so they
+/// follow the same deterministic path. Compares every metric each second while
+/// the trajectories are still locked and returns the worst deviation seen per
+/// metric. Every metric is compared at a tight 10 % here, including the
+/// global-shape ones that the 60 s run has to relax: within the lock-in window
+/// they agree closely too.
+///
+/// The noise is off for the same reason the single-step test switches it off:
+/// with it on the two engines are independent realizations and the comparison
+/// only says their *statistics* match. With it off the same path is compared,
+/// which is the stronger statement, and it makes the check reproducible.
 pub fn lock_in(gpu: &Gpu, seed: u64, birds: usize, seconds: u32) -> Vec<Metric> {
     const RTOL: f32 = 0.10;
-    let samples = step_together(gpu, seed, birds, seconds);
+    let samples = step_together(gpu, seed, birds, seconds, false);
     METRICS
         .iter()
         .map(|spec| {
@@ -188,7 +199,7 @@ pub fn lock_in(gpu: &Gpu, seed: u64, birds: usize, seconds: u32) -> Vec<Metric> 
 /// Runs `seconds` simulated seconds on both engines from the same state and
 /// compares the settled statistics (last half of the run).
 pub fn run_seed(gpu: &Gpu, seed: u64, birds: usize, seconds: u32) -> SeedReport {
-    let samples = step_together(gpu, seed, birds, seconds);
+    let samples = step_together(gpu, seed, birds, seconds, true);
 
     let start = samples.len() / 2;
     let settled: Vec<Metric> = METRICS
@@ -250,9 +261,21 @@ fn worst_metric(spec: &Spec, samples: &[(f32, Stats, Stats)]) -> Metric {
     worst
 }
 
-/// Steps the CPU and the GPU one second at a time from the same snapshot.
-fn step_together(gpu: &Gpu, seed: u64, birds: usize, seconds: u32) -> Vec<(f32, Stats, Stats)> {
+/// Steps the CPU and the GPU one second at a time from the same snapshot. With
+/// `noise` false the random force is off on both engines, so they follow the
+/// same deterministic path and the comparison measures the dynamics; with it on
+/// they are two independent realizations and the comparison is statistical.
+fn step_together(
+    gpu: &Gpu,
+    seed: u64,
+    birds: usize,
+    seconds: u32,
+    noise: bool,
+) -> Vec<(f32, Stats, Stats)> {
     let mut cpu = World::new(birds, seed);
+    if !noise {
+        cpu.w_xi = 0.0;
+    }
     let mut sim = Sim::from_snapshot(gpu, &cpu.snapshot());
     let per_second = (1.0 / DT).round() as u32;
 

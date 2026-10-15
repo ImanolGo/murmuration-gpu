@@ -1,16 +1,16 @@
-//! The GPU simulation: the compute pipelines and the ping-pong bird buffers.
+//! The GPU simulation: the compute pipelines, the ping-pong bird buffers and
+//! the spatial grid.
 //!
-//! Three tiny compute passes mirror the reference's step (see
-//! `shaders/sim.wgsl`):
-//!
-//! 1. `tick` advances the shared clock once;
-//! 2. `decide` reads the whole flock from `src` and writes `dst` (a faithful
-//!    simultaneous snapshot, like the reference reading `self` once);
-//! 3. `integrate` advances `dst` in place.
+//! Each step mirrors the reference's step (see `shaders/sim.wgsl` and
+//! `shaders/grid.wgsl`): `tick` advances the shared clock, the grid is rebuilt
+//! from the current positions, `decide` reads the whole flock from `src` and
+//! writes `dst` (a faithful simultaneous snapshot, like the reference reading
+//! `self` once), and `integrate` advances `dst` in place.
 //!
 //! The bird state is double-buffered and the two directions have their own bind
 //! groups, so a step needs no queue write: many steps can be encoded into one
-//! command buffer. [`Sim::advance`] is that loop.
+//! command buffer. [`Sim::advance`] is that loop; [`Sim::advance_timeline`]
+//! stamps each pass with GPU timestamps for `--bench`.
 
 use std::mem::size_of;
 
@@ -18,17 +18,25 @@ use bytemuck::{Pod, Zeroable};
 use murmur_ref::state::Snapshot;
 use wgpu::{
     BindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, Buffer,
-    BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoderDescriptor,
-    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, PipelineLayoutDescriptor,
-    ShaderStages,
+    BufferBindingType, BufferDescriptor, BufferUsages, CommandEncoder, CommandEncoderDescriptor,
+    ComputePipeline, ComputePipelineDescriptor, PipelineLayoutDescriptor, QuerySet,
+    ShaderModuleDescriptor, ShaderSource, ShaderStages,
 };
 
 use crate::bird::Bird;
 use crate::device::Gpu;
+use crate::grid::{
+    BINDING_BLOCK_SUMS, BINDING_BUCKET, BINDING_COUNTS, BINDING_OFFSETS, BINDING_SORTED,
+    COMMON_WGSL, Grid,
+};
 use crate::params::{Params, turning_from_code};
+use crate::pass::{Timeline, dispatch};
 
-/// Threads per workgroup, matching `@workgroup_size` in the shader.
+/// Threads per workgroup, matching `@workgroup_size` in `shaders/sim.wgsl`.
 const WORKGROUP: u32 = 256;
+
+/// The per-bird step, mirrored from `shaders/sim.wgsl`.
+const SIM_WGSL: &str = include_str!("../shaders/sim.wgsl");
 
 /// The shared clock buffer, matching `struct Clock` in the shader.
 #[repr(C)]
@@ -42,16 +50,19 @@ pub struct Clock {
     pub pad1: u32,
 }
 
-/// A running GPU flock: pipelines, buffers and the current step index.
+/// A running GPU flock: pipelines, buffers, the grid and the step index.
 pub struct Sim {
     /// The parameters block sent to the shader.
     pub params: Params,
+    /// The spatial grid, rebuilt every step.
+    pub grid: Grid,
     params_buffer: Buffer,
     birds: [Buffer; 2],
     clock: Buffer,
     readback: Buffer,
     bind_groups: [BindGroup; 2],
     decide: ComputePipeline,
+    decide_bruteforce: ComputePipeline,
     integrate: ComputePipeline,
     tick: ComputePipeline,
     n: usize,
@@ -66,7 +77,11 @@ impl Sim {
     /// Builds a GPU flock for `params`, with an empty (zeroed) bird buffer.
     pub fn new(gpu: &Gpu, params: Params) -> Self {
         let device = &gpu.device;
-        let module = device.create_shader_module(wgpu::include_wgsl!("../shaders/sim.wgsl"));
+        let source = format!("{COMMON_WGSL}\n{SIM_WGSL}");
+        let module = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("sim"),
+            source: ShaderSource::Wgsl(source.into()),
+        });
 
         let bgl = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("sim: bind group layout"),
@@ -75,6 +90,26 @@ impl Sim {
                 entry(1, BufferBindingType::Storage { read_only: true }),
                 entry(2, BufferBindingType::Storage { read_only: false }),
                 entry(3, BufferBindingType::Storage { read_only: false }),
+                entry(
+                    BINDING_BUCKET,
+                    BufferBindingType::Storage { read_only: false },
+                ),
+                entry(
+                    BINDING_COUNTS,
+                    BufferBindingType::Storage { read_only: false },
+                ),
+                entry(
+                    BINDING_OFFSETS,
+                    BufferBindingType::Storage { read_only: false },
+                ),
+                entry(
+                    BINDING_SORTED,
+                    BufferBindingType::Storage { read_only: false },
+                ),
+                entry(
+                    BINDING_BLOCK_SUMS,
+                    BufferBindingType::Storage { read_only: false },
+                ),
             ],
         });
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
@@ -93,6 +128,7 @@ impl Sim {
             })
         };
         let decide = pipeline("decide_kernel");
+        let decide_bruteforce = pipeline("decide_bruteforce_kernel");
         let integrate = pipeline("integrate_kernel");
         let tick = pipeline("tick_kernel");
 
@@ -126,6 +162,8 @@ impl Sim {
             mapped_at_creation: false,
         });
 
+        let grid = Grid::new(gpu, &layout, n);
+
         let bind = |src: usize, dst: usize| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("sim: bind group"),
@@ -147,6 +185,26 @@ impl Sim {
                         binding: 3,
                         resource: clock.as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: BINDING_BUCKET,
+                        resource: grid.bucket.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: BINDING_COUNTS,
+                        resource: grid.counts.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: BINDING_OFFSETS,
+                        resource: grid.offsets.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: BINDING_SORTED,
+                        resource: grid.sorted.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: BINDING_BLOCK_SUMS,
+                        resource: grid.block_sums.as_entire_binding(),
+                    },
                 ],
             })
         };
@@ -154,12 +212,14 @@ impl Sim {
 
         let sim = Self {
             params,
+            grid,
             params_buffer,
             birds,
             clock,
             readback,
             bind_groups,
             decide,
+            decide_bruteforce,
             integrate,
             tick,
             n,
@@ -190,6 +250,12 @@ impl Sim {
         sim
     }
 
+    /// Overwrites the current bird buffer with `birds` (benchmarks and tests).
+    pub fn write_birds(&self, gpu: &Gpu, birds: &[Bird]) {
+        gpu.queue
+            .write_buffer(&self.birds[self.cur], 0, bytemuck::cast_slice(birds));
+    }
+
     /// Number of birds.
     pub fn len(&self) -> usize {
         self.n
@@ -213,25 +279,88 @@ impl Sim {
 
     /// Encodes and submits `steps` integration steps in one command buffer.
     pub fn advance(&mut self, gpu: &Gpu, steps: u32) {
+        self.run(gpu, steps, false);
+    }
+
+    /// The same loop with the brute-force neighbour search, for the phase 3
+    /// acceptance test (the grid is not rebuilt).
+    pub fn advance_bruteforce(&mut self, gpu: &Gpu, steps: u32) {
+        self.run(gpu, steps, true);
+    }
+
+    /// Runs exactly one step with every pass stamped into `query_set`, for
+    /// `--bench`. The slots are those of [`crate::pass::STEP_PASSES`].
+    pub fn advance_timeline(&mut self, gpu: &Gpu, query_set: &QuerySet) {
+        let mut timeline = Some(Timeline::new(query_set));
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("sim: timed step"),
+            });
+        self.record_step(&mut encoder, false, &mut timeline);
+        gpu.queue.submit(Some(encoder.finish()));
+        self.cur ^= 1;
+        self.time += self.params.dt;
+        self.step += 1;
+    }
+
+    /// Rebuilds the grid from the current positions on its own (tests).
+    pub fn rebuild_grid(&self, gpu: &Gpu) {
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("sim: grid"),
+            });
+        self.grid
+            .record(&mut encoder, &self.bind_groups[self.cur], self.n, &mut None);
+        gpu.queue.submit(Some(encoder.finish()));
+    }
+
+    fn run(&mut self, gpu: &Gpu, steps: u32, bruteforce: bool) {
         if steps == 0 {
             return;
         }
-        let workgroups = self.n.div_ceil(WORKGROUP as usize) as u32;
         let mut encoder = gpu
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("sim: step"),
             });
+        let mut timeline = None;
         for _ in 0..steps {
-            let bind_group = &self.bind_groups[self.cur];
-            dispatch(&mut encoder, &self.tick, bind_group, 1);
-            dispatch(&mut encoder, &self.decide, bind_group, workgroups);
-            dispatch(&mut encoder, &self.integrate, bind_group, workgroups);
+            self.record_step(&mut encoder, bruteforce, &mut timeline);
             self.cur ^= 1;
         }
         gpu.queue.submit(Some(encoder.finish()));
         self.time += steps as f32 * self.params.dt;
         self.step += steps;
+    }
+
+    /// Records one step for the current direction.
+    fn record_step(
+        &self,
+        encoder: &mut CommandEncoder,
+        bruteforce: bool,
+        timeline: &mut Option<Timeline<'_>>,
+    ) {
+        let bind_group = &self.bind_groups[self.cur];
+        let workgroups = self.n.div_ceil(WORKGROUP as usize) as u32;
+        dispatch(encoder, &self.tick, bind_group, 1, timeline.as_mut());
+        if !bruteforce {
+            self.grid.record(encoder, bind_group, self.n, timeline);
+        }
+        let decide = if bruteforce {
+            &self.decide_bruteforce
+        } else {
+            &self.decide
+        };
+        dispatch(encoder, decide, bind_group, workgroups, timeline.as_mut());
+        dispatch(
+            encoder,
+            &self.integrate,
+            bind_group,
+            workgroups,
+            timeline.as_mut(),
+        );
     }
 
     /// Copies the current bird state back to the host.
@@ -315,20 +444,4 @@ fn entry(binding: u32, ty: BufferBindingType) -> BindGroupLayoutEntry {
         },
         count: None,
     }
-}
-
-/// Records one compute dispatch of `pipeline`.
-fn dispatch(
-    encoder: &mut wgpu::CommandEncoder,
-    pipeline: &ComputePipeline,
-    bind_group: &BindGroup,
-    workgroups: u32,
-) {
-    let mut pass = encoder.begin_compute_pass(&ComputePassDescriptor {
-        label: None,
-        timestamp_writes: None,
-    });
-    pass.set_pipeline(pipeline);
-    pass.set_bind_group(0, bind_group, &[]);
-    pass.dispatch_workgroups(workgroups, 1, 1);
 }

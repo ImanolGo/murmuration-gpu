@@ -68,7 +68,7 @@ pub fn for_surface(
         ..Default::default()
     }))
     .map_err(DeviceError::NoAdapter)?;
-    open(instance.clone(), adapter)
+    open(instance.clone(), adapter, wgpu::Features::empty())
 }
 
 /// Requests a headless device, without a surface, for tests and benches.
@@ -78,21 +78,43 @@ pub fn for_surface(
 /// GPU work with a clear message in that case rather than fail the suite;
 /// an adapter that refuses a device, on the other hand, is a real error.
 pub fn headless(power: PowerPreference) -> Result<Gpu, DeviceError> {
+    headless_with(power, wgpu::Features::empty())
+}
+
+/// Like [`headless`], asking for `features` as well.
+///
+/// The adapter's own set is intersected in first, so asking for a feature the
+/// adapter lacks opens the device without it rather than failing; callers that
+/// need it (the benchmark needs `TIMESTAMP_QUERY`) must check
+/// [`Gpu::adapter`]'s features and say so when it is missing.
+pub fn headless_with(power: PowerPreference, features: wgpu::Features) -> Result<Gpu, DeviceError> {
     let instance = Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let adapter = pollster::block_on(instance.request_adapter(&RequestAdapterOptions {
         power_preference: power,
         ..Default::default()
     }))
     .map_err(DeviceError::NoAdapter)?;
-    open(instance, adapter)
+    open(instance, adapter, features)
 }
 
 /// Opens the device on `adapter` and bundles it with the instance.
-fn open(instance: Instance, adapter: Adapter) -> Result<Gpu, DeviceError> {
+///
+/// The device asks for the adapter's own limits rather than the WebGPU
+/// defaults. The bird record is 112 bytes, so a three-million-bird run holds
+/// 336 MB in one storage buffer: past the default 256 MB `max_buffer_size` and
+/// 128 MB `max_storage_buffer_binding_size`. This is a native application run
+/// on a known GPU (PLAN.md's target hardware), not a portable web page, so the
+/// WebGPU portability floor is not the right bound here. The adapter's limits
+/// are what the driver reports it can do and are always requestable.
+fn open(
+    instance: Instance,
+    adapter: Adapter,
+    features: wgpu::Features,
+) -> Result<Gpu, DeviceError> {
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("murmuration-gpu: device"),
-        required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::default(),
+        required_features: features & adapter.features(),
+        required_limits: adapter.limits(),
         experimental_features: wgpu::ExperimentalFeatures::disabled(),
         memory_hints: wgpu::MemoryHints::MemoryUsage,
         trace: wgpu::Trace::Off,

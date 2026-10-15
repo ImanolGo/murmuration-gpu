@@ -13,10 +13,11 @@ use murmur_ref::flight::Turning;
 use murmur_ref::params as p;
 use murmur_ref::state::Snapshot;
 
-/// Per-run parameters, mirroring the reference constants plus the clock.
+/// Per-run parameters, mirroring the reference constants plus the clock and the
+/// spatial grid's shape.
 ///
-/// 48 `f32`/`u32` scalars = 192 bytes, already a multiple of 16, so it needs no
-/// padding and the WGSL struct matches field for field.
+/// 52 `f32`/`u32` scalars = 208 bytes, a multiple of 16, so the WGSL struct
+/// matches field for field.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
 pub struct Params {
@@ -78,7 +79,14 @@ pub struct Params {
     pub n: u32,
     pub zigzag_k: u32,
     pub seed: u32,
-    pub pad: u32,
+    /// Number of hash buckets in the spatial grid (a power of two).
+    pub buckets: u32,
+
+    /// `1 / params::GRID_CELL`, the grid cell size the shader inverts.
+    pub inv_cell: f32,
+    pub pad1: f32,
+    pub pad2: f32,
+    pub pad3: u32,
 }
 
 /// Map the reference [`Turning`] to the shader's `u32` discriminant.
@@ -155,7 +163,12 @@ impl Params {
             n: n as u32,
             zigzag_k: p::ZIGZAG_K,
             seed: seed as u32,
-            pad: 0,
+            buckets: crate::grid::buckets_for(n),
+
+            inv_cell: 1.0 / p::GRID_CELL,
+            pad1: 0.0,
+            pad2: 0.0,
+            pad3: 0,
         }
     }
 

@@ -101,7 +101,7 @@ GPU are genuinely different machines:
   CPU's spatial hash. The set of neighbours within the radius is the same; only
   the order the partial sums are accumulated in differs, which is what the
   single-step parity measurement sees (1e-7 relative). Phase 3 replaces it with
-  the grid.
+  the grid (see the phase 3 adaptations below).
 - **Counter-based random stream, not `ChaCha8Rng`.** The reference draws its
   random force from each bird's `ChaCha8` stream. A `ChaCha8Rng`'s position in
   its stream cannot be extracted to hand to the GPU, and reproducing `rand`'s
@@ -124,6 +124,66 @@ GPU are genuinely different machines:
   from the sketch are derived in the shader exactly as the reference derives
   them, so they are not stored. The layout is guarded against the WGSL struct by
   `tests/layout.rs`; phase 9 may shrink it with a benchmark, as PLAN.md asks.
+
+### Phase 3 adaptations
+
+- **The neighbour search is a radius query, not k-nearest.** PLAN.md phase 3
+  said the pass "keeps the k = 7 nearest in a small register array". The model
+  does not cap at 7: `radius_step` drives the radius towards `N_C = 6.5`, and
+  `decide` uses *every* bird inside it, plus a `2R_i` walk for centrality. A cap
+  would change `n_all`, the sums, the centrality and the radius update, so the
+  grid mirrors `Grid::for_each_within` (all birds within the radius) instead.
+  This is recorded in PLAN.md as a change to the plan, not to the model.
+- **Cells hash into a table sized from the bird count, not the oracle's fixed
+  2^16.** `Grid::buckets_for` uses `next_power_of_two(2N)` clamped to
+  `[2^16, 2^22]`. The bucket count only changes which bin a cell lands in; every
+  query also checks the exact cell, so the neighbour set is unaffected. The cell
+  size itself is *not* free: it is `params::GRID_CELL` (4.0 m), the oracle's
+  value, so both engines put the same birds in the same cell. The table is a
+  performance knob left for phase 9, where the benchmark will size it.
+- **The scatter fills a `sorted` array of bird indices, not a reordered bird
+  array.** PLAN.md phase 3 says the scatter should "reorder the bird state". The
+  records stay in place and the query goes through the index array. The effect
+  is the same and it avoids moving 112-byte records; physically reordering is
+  left to phase 9, when the record is smaller and the benefit is measurable.
+- **Each bucket's range is sorted by bird index after the scatter.** A parallel
+  `atomicAdd` scatter leaves the order inside a bucket to the scheduler, so two
+  runs of the same command gave slightly different flocks (measured: the
+  `nn_ab` metric moved by more than its own tolerance between two runs, and the
+  lock-in parity check flipped pass/fail). The model is deterministic
+  (AGENTS.md), so one extra pass restores a fixed order; it costs 0.1–4 ms per
+  step over the benchmark's bird counts. The neighbour set never depended on
+  this order, only the last bits of the f32 sums did.
+- **The lock-in parity check runs with the random force off.** This is a change
+  to a phase 2 check, made in phase 3. With the noise on, the two engines draw
+  from independent generators, so they are two realizations and the check only
+  compares statistics — the same weak statement the 60 s run makes. Measuring
+  the noise-free divergence (mean 0.3 m after 1 s, 3.7 m after 5 s) showed the
+  check has to be about the same path, not about smoothing independent runs, so
+  it now switches the noise off like the single-step test. Every metric then
+  stays within its 10 % bound for 5 s, the worst at 40 % of its bound; the
+  earlier noise-on version was marginally failing on one seed.
+- **The device requests the adapter's limits, not the WebGPU defaults.** The
+  3M-bird acceptance run holds 336 MB in one storage buffer, past the default
+  256 MB `max_buffer_size` and 128 MB `max_storage_buffer_binding_size`. This is
+  a native build on a named GPU, so the portability floor is the wrong bound;
+  requesting `adapter.limits()` is always valid and is what the driver reports.
+- **The benchmark starts from a synthetic settled flock.** The model's initial
+  condition puts the flock in an 18 m ellipsoid; at three million birds that is
+  thousands of times denser than any settled flock, and the grid's cost follows
+  the local density (birds per perception radius), so a benchmark from that
+  state would measure a state the model never reaches. `bench::setup` scatters
+  the birds uniformly at 0.5 birds/m³ with a 1.5 m radius — about seven
+  neighbours, the reference's settled value — and warms up for 20 steps. The
+  numbers are therefore honest for a settled flock, and this is stated wherever
+  the benchmark is reported.
+- **Two grid buffers play two roles each.** `counts` is the histogram until the
+  level-1 scan has read it and then the scatter cursor; `block_sums` is the
+  block totals until the single `grid_scan_totals` workgroup has read them all
+  into shared memory and then the block offsets. Both reuses are within one pass
+  boundary or one workgroup, so neither races, and they keep the pipeline inside
+  the WebGPU limit of eight storage buffers per stage. `shaders/grid.wgsl`
+  documents both.
 
 ## Known gaps (reported, not hidden)
 

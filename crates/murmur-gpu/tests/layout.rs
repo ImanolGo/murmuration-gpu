@@ -11,7 +11,7 @@ use murmur_gpu::bird::Bird;
 use murmur_gpu::params::Params;
 
 /// The shader every GPU struct is checked against.
-const SHADER: &str = include_str!("../shaders/sim.wgsl");
+const SHADER: &str = include_str!("../shaders/common.wgsl");
 
 /// Extracts the field names of `struct <name> { ... }` from WGSL, handling
 /// several fields per line and ignoring comments.
@@ -54,7 +54,7 @@ macro_rules! check_struct {
 
 #[test]
 fn params_matches_wgsl() {
-    assert_eq!(size_of::<Params>(), 192);
+    assert_eq!(size_of::<Params>(), 208);
     check_struct!(
         Params,
         "Params",
@@ -106,7 +106,11 @@ fn params_matches_wgsl() {
             (n, 176),
             (zigzag_k, 180),
             (seed, 184),
-            (pad, 188),
+            (buckets, 188),
+            (inv_cell, 192),
+            (pad1, 196),
+            (pad2, 200),
+            (pad3, 204),
         ]
     );
 }

@@ -87,10 +87,10 @@ Each frame runs a fixed-step simulation, then a render pass, on one GPU:
 ┌──────────────────────────────── GPU ────────────────────────────────┐
 │                                                                     │
 │  simulate (fixed step, compute)                                     │
-│    1. hash birds into a uniform grid                                │
-│    2. counting sort by cell, reorder bird state for locality        │
-│    3. per bird: scan nearby cells within its adaptive radius,       │
-│       keep the ~7 nearest, accumulate social forces                 │
+│    1. hash birds into a uniform grid (fixed-size table)             │
+│    2. counting sort by bucket, into an index array for locality     │
+│    3. per bird: scan the cells its adaptive radius covers, keep     │
+│       every bird inside it, accumulate the social forces            │
 │    4. banked flight, speed control, altitude, roost, predator       │
 │    5. integrate into the next state buffer                          │
 │                                                                     │
@@ -121,9 +121,10 @@ app/               the murmuration-gpu binary: window, camera, input, CLI
 This is a research-inspired visual simulation, not a validated predictor of
 wild flocks. The same caveats as the terminal version apply, plus:
 
-- Nearest-neighbour search is approximate: each bird searches within its own
-  adaptive radius rather than doing an exact global k-nearest search. This
-  matches how the model works but may differ in edge cases.
+- The neighbour search is a radius query, as the model is: each bird keeps
+  every bird inside its own adaptive radius rather than an exact global
+  k-nearest set. The radius targets about seven neighbours but is not capped
+  at seven.
 - GPU results are not bit-identical to the CPU reference. A seed gives a
   repeatable start, and parity is checked with flock statistics rather than
   frame by frame.

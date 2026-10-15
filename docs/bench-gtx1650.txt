@@ -1,0 +1,49 @@
+# Phase 3 acceptance: per-pass GPU timings at 100k, 1M and 3M birds.
+# Machine: CachyOS, NVIDIA GeForce GTX 1650 Max-Q (Turing, 4 GB), driver 615.78.08,
+# Vulkan backend, launched with prime-run. Today: 2026-10-15.
+# Command: prime-run cargo run -p murmuration-gpu --release -- --bench
+#
+# murmuration-gpu --bench steps=10
+# adapter "NVIDIA GeForce GTX 1650 with Max-Q Design" on Vulkan (DiscreteGpu), driver "NVIDIA" 615.78.08
+# 100000 birds, 10 timed steps (after warm-up)
+#   pass                         ms
+#   tick                     0.0033
+#   grid_clear               0.0118
+#   grid_histogram           0.0633
+#   grid_scan_blocks         0.0595
+#   grid_scan_totals         0.0064
+#   grid_scan_add            0.1071
+#   grid_scatter             0.0388
+#   grid_sort_buckets        0.1408
+#   decide                  14.0309
+#   integrate                0.4881
+#   step total              14.9499
+#   bird-steps/s            6689016
+# 1000000 birds, 10 timed steps (after warm-up)
+#   pass                         ms
+#   tick                     0.0033
+#   grid_clear               0.0881
+#   grid_histogram           2.0313
+#   grid_scan_blocks         0.3272
+#   grid_scan_totals         0.0065
+#   grid_scan_add            0.7373
+#   grid_scatter             3.1391
+#   grid_sort_buckets        1.4505
+#   decide                 150.5780
+#   integrate                4.5504
+#   step total             162.9116
+#   bird-steps/s            6138299
+# 3000000 birds, 10 timed steps (after warm-up)
+#   pass                         ms
+#   tick                     0.0036
+#   grid_clear               0.1755
+#   grid_histogram           7.4596
+#   grid_scan_blocks         0.6513
+#   grid_scan_totals         0.0078
+#   grid_scan_add            1.3843
+#   grid_scatter            11.2082
+#   grid_sort_buckets        4.0906
+#   decide                 460.3970
+#   integrate               13.7521
+#   step total             499.1299
+#   bird-steps/s            6010460

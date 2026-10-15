@@ -68,3 +68,112 @@ the recorded runs, on the machine named in each section.
   `cargo clippy --workspace --all-targets -- -D warnings` and `cargo test`
   were re-run clean at commit time (3 tests; the GPU test ran on the
   GTX 1650, not skipped).
+
+## Phase 1 — reference model as oracle (blocked on a decision)
+
+**The check PLAN.md asks for: is the simulation usable as a library,
+without the terminal code?**
+
+Answer: the simulation is exposed and pure, but it cannot be built without
+the terminal code. Details (murmuration 0.2.0; the local checkout is the
+published source plus two README-only commits, and crates.io confirms the
+published crate declares `features: {}`):
+
+- Yes: `murmuration::sim` is a public module (`World`, `params`, `social`,
+  `flight`, `neighbours`, `escape`, `falcon`, `arc`, `turns`, `analysis`),
+  it never references `crate::cli` or `crate::render` (verified by search),
+  and it is deterministic for a seed. `main.rs` itself drives it through
+  exactly this API for `--analyze`.
+- No: `ratatui`, `crossterm`, `clap` and `signal-hook` are unconditional
+  dependencies, so depending on the crate compiles the whole TUI stack.
+  `sim::flight::Turning` even derives `clap::ValueEnum` — the sim itself
+  references a CLI crate. All modules are `#[doc(hidden)]` with a "no
+  stability guarantee" note, and the published crate has no features.
+
+**Baseline recorded (the acceptance oracle)**
+
+`murmuration --analyze 120 --birds 2000 --seed 42` (release, this machine):
+16.3 s wall for 120 simulated seconds. Full per-second output:
+`docs/reference-analyze-2000-42.txt`. Averaged over t = 30–120 s:
+
+| statistic | value |
+| --- | --- |
+| mean topological neighbours \|N\| | 6.62 |
+| mean nearest-neighbour distance | 0.77 m |
+| horizontal flock-plane alignment | 0.90 |
+| nearest-neighbour ahead/behind fraction | 0.095 |
+| height standard deviation | 2.06 m |
+| largest single-link cluster (5 m) | ≥ 99.9 % |
+| mean speed | 10.0 m/s |
+| inertia ratios I2/I1, I3/I1 | 3.43, 32.4 |
+
+These match the "current measurements" table in murmuration's
+DEVELOPMENT.md. The phase 1 acceptance run must reproduce them.
+
+**Proposal (not applied): the smallest change to murmuration**
+
+Gate the terminal side behind a default `tui` feature. About 15 changed
+lines; the default build is unchanged, and the simulation builds alone
+with `default-features = false`:
+
+```toml
+# Cargo.toml
+[features]
+# The terminal UI, its CLI and its signal handling. The simulation
+# (sim::) needs none of these; depend on murmuration with
+# default-features = false to use only the model.
+default = ["tui"]
+tui = ["dep:ratatui", "dep:crossterm", "dep:clap", "dep:signal-hook"]
+
+[dependencies]
+ratatui = { version = "0.30", optional = true }
+crossterm = { version = "0.29", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+signal-hook = { version = "0.3", optional = true }
+# rand, rand_chacha, glam, rayon stay non-optional: sim needs them.
+
+[[bin]]
+name = "murmuration"
+required-features = ["tui"] # --no-default-features builds the lib only
+```
+
+```rust
+// src/lib.rs
+pub mod sim; // always built
+
+#[cfg(feature = "tui")]
+pub mod cli;
+#[cfg(feature = "tui")]
+pub mod render;
+```
+
+```rust
+// src/sim/flight.rs — the only place sim references clap
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[cfg_attr(feature = "tui", derive(clap::ValueEnum))]
+pub enum Turning {
+```
+
+```yaml
+# .github/workflows/ci.yml — one extra line so the lib-only build cannot rot
+- run: cargo test -p murmuration --lib --no-default-features
+```
+
+Nothing else changes: the binary, the `xtask` and the render tests all run
+with the default features, exactly as today. If this lands, `murmur-ref`
+depends on the crate — from a checkout
+(`murmuration = { path = "../murmuration", default-features = false }`)
+or from crates.io once released — and reuses `sim` and `sim::analysis`
+wholesale, which keeps one source of truth for the model.
+
+Optional cosmetic follow-up, left to the maintainer: un-hide `pub mod sim`
+and soften the "no stability guarantee" note, since it would now be a
+deliberate library surface.
+
+**Blocked on**
+
+The maintainer's answer: apply the feature gate upstream and depend on the
+crate, or vendor `sim/` into `murmur-ref` with attribution and strip the
+terminal code. Until then the phase 1 work (statistics wiring,
+`export`/`import`, the headless acceptance run) is on hold, per instruction;
+nothing has been vendored.

@@ -8,7 +8,11 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-# Deliberately empty in phase 0. Phase 1 brings the reference model in,
-# either as a dependency on the `murmuration` crate (if it exposes its
-# simulation without the terminal code) or vendored from it with
-# attribution; the choice is recorded in docs/progress.md.
+# The model is reimplemented here (PLAN.md phase 1, maintainer's decision), so
+# it needs no terminal crate and does not depend on `murmuration`. These are the
+# same crates and versions the reference uses, which is what makes the oracle
+# comparable: identical `glam` and `rand` versions give bit-identical arithmetic
+# and random streams.
+glam.workspace = true
+rand.workspace = true
+rand_chacha.workspace = true

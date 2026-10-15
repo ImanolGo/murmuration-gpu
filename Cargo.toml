@@ -16,7 +16,10 @@ repository = "https://github.com/ImanolGo/murmuration-gpu"
 
 [workspace.dependencies]
 bytemuck = "1"
+glam = "0.34"
 pollster = "1"
+rand = "0.9"
+rand_chacha = "0.9"
 wgpu = "30.0.1"
 winit = "0.30"
 

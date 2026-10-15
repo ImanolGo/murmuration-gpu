@@ -69,111 +69,87 @@ the recorded runs, on the machine named in each section.
   were re-run clean at commit time (3 tests; the GPU test ran on the
   GTX 1650, not skipped).
 
-## Phase 1 — reference model as oracle (blocked on a decision)
+## Phase 1 — reference model as oracle (done, 2026-10-15)
 
-**The check PLAN.md asks for: is the simulation usable as a library,
-without the terminal code?**
+### The library check
 
-Answer: the simulation is exposed and pure, but it cannot be built without
-the terminal code. Details (murmuration 0.2.0; the local checkout is the
-published source plus two README-only commits, and crates.io confirms the
-published crate declares `features: {}`):
+PLAN.md asked whether `murmuration` exposes its simulation as a library
+usable without the terminal code. The answer was a third case, not a plain
+yes/no (murmuration 0.2.0):
 
-- Yes: `murmuration::sim` is a public module (`World`, `params`, `social`,
-  `flight`, `neighbours`, `escape`, `falcon`, `arc`, `turns`, `analysis`),
-  it never references `crate::cli` or `crate::render` (verified by search),
-  and it is deterministic for a seed. `main.rs` itself drives it through
+- Yes: `murmuration::sim` is public and pure — `World`, `params`, `social`,
+  `flight`, `neighbours`, `escape`, `falcon`, `arc`, `turns`, `analysis` —
+  and it never references `crate::cli` or `crate::render`. `main.rs` drives
   exactly this API for `--analyze`.
-- No: `ratatui`, `crossterm`, `clap` and `signal-hook` are unconditional
-  dependencies, so depending on the crate compiles the whole TUI stack.
-  `sim::flight::Turning` even derives `clap::ValueEnum` — the sim itself
-  references a CLI crate. All modules are `#[doc(hidden)]` with a "no
-  stability guarantee" note, and the published crate has no features.
+- No: the crate cannot be built without the terminal stack. `ratatui`,
+  `crossterm`, `clap` and `signal-hook` are unconditional dependencies,
+  `sim::flight::Turning` even derives `clap::ValueEnum`, every module is
+  `#[doc(hidden)]` with a "no stability guarantee" note, and the published
+  crate declares no features.
 
-**Baseline recorded (the acceptance oracle)**
+The smallest upstream change (a default `tui` feature, ~15 lines) was
+drafted and offered, but the maintainer chose instead to **reimplement the
+model in `murmur-ref`**: no dependency on `murmuration`, no vendored copy,
+`murmur-gpu` fully independent of the terminal crate. This supersedes the
+"depend or vendor" wording in PLAN.md phase 1.
 
-`murmuration --analyze 120 --birds 2000 --seed 42` (release, this machine):
-16.3 s wall for 120 simulated seconds. Full per-second output:
-`docs/reference-analyze-2000-42.txt`. Averaged over t = 30–120 s:
+### Built
 
-| statistic | value |
-| --- | --- |
-| mean topological neighbours \|N\| | 6.62 |
-| mean nearest-neighbour distance | 0.77 m |
-| horizontal flock-plane alignment | 0.90 |
-| nearest-neighbour ahead/behind fraction | 0.095 |
-| height standard deviation | 2.06 m |
-| largest single-link cluster (5 m) | ≥ 99.9 % |
-| mean speed | 10.0 m/s |
-| inertia ratios I2/I1, I3/I1 | 3.43, 32.4 |
+- `crates/murmur-ref/src/`: `params`, `neighbours`, `flight`, `social`,
+  `escape`, `falcon`, `arc`, `world` — the model, mirroring the reference
+  module for module, without `clap` or any terminal crate. Dependencies are
+  only `glam`, `rand` and `rand_chacha`, pinned to the versions the
+  reference resolves to (glam 0.34.1, rand 0.9.5, rand_chacha 0.9.0), so the
+  arithmetic and random streams are identical.
+- `analysis`: the reference `--analyze` metrics and `Stats::line()`, kept
+  byte-for-byte comparable with the terminal output.
+- `stats`: the extra statistics PLAN.md phase 1 lists — nearest-neighbour
+  distance over all birds, polarisation, flock extent and aspect ratios,
+  border-vs-centre density, and a speed distribution (`mean ± std`,
+  p10/p50/p90). The reference `analysis.rs` has none of these except NND
+  and neighbour count.
+- `state`: `export`/`import` as a `Snapshot` (birds plus the world clock,
+  `z0` and the model knobs). See `docs/model.md` for why it is not a bare
+  `Vec<Bird>`.
+- `src/bin/analyze.rs`: headless `--analyze` printing the reference format,
+  plus `--extended` for the `stats` line.
 
-These match the "current measurements" table in murmuration's
-DEVELOPMENT.md. The phase 1 acceptance run must reproduce them.
+### Acceptance — reproducing the oracle
 
-**Proposal (not applied): the smallest change to murmuration**
+`murmuration --analyze 120 --birds 2000 --seed 42` was recorded as the
+baseline before the decision (`docs/reference-analyze-2000-42.txt`; 16.3 s
+wall in the terminal project). Running the reimplementation:
 
-Gate the terminal side behind a default `tui` feature. About 15 changed
-lines; the default build is unchanged, and the simulation builds alone
-with `default-features = false`:
-
-```toml
-# Cargo.toml
-[features]
-# The terminal UI, its CLI and its signal handling. The simulation
-# (sim::) needs none of these; depend on murmuration with
-# default-features = false to use only the model.
-default = ["tui"]
-tui = ["dep:ratatui", "dep:crossterm", "dep:clap", "dep:signal-hook"]
-
-[dependencies]
-ratatui = { version = "0.30", optional = true }
-crossterm = { version = "0.29", optional = true }
-clap = { version = "4", features = ["derive"], optional = true }
-signal-hook = { version = "0.3", optional = true }
-# rand, rand_chacha, glam, rayon stay non-optional: sim needs them.
-
-[[bin]]
-name = "murmuration"
-required-features = ["tui"] # --no-default-features builds the lib only
+```sh
+cargo run -p murmur-ref --bin analyze --release -- \
+    --birds 2000 --seed 42 --seconds 120
 ```
 
-```rust
-// src/lib.rs
-pub mod sim; // always built
+All **120 per-second lines are byte-for-byte identical** to the recorded
+baseline (checked with `diff` on the `t=` lines). The settled means
+(t = 30–120 s) match the values tabulated earlier: |N| 6.62, NND 0.77 m,
+flat 0.90, nn_ab 0.095, hstd 2.06 m, cluster ≥ 99.9 %, v 10.0, I2/I1 3.43.
+The reference took 16.3 s for the run; this crate takes 23.9 s in release
+(sequential decisions instead of `rayon`; same results).
 
-#[cfg(feature = "tui")]
-pub mod cli;
-#[cfg(feature = "tui")]
-pub mod render;
-```
+`tests/oracle.rs` asserts exact equality at t = 20 s and t = 60 s on every
+`cargo test`; the full 120 s check is `#[ignore]`d and passes with
+`cargo test -p murmur-ref --test oracle -- --ignored` (≈23 s).
 
-```rust
-// src/sim/flight.rs — the only place sim references clap
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-#[cfg_attr(feature = "tui", derive(clap::ValueEnum))]
-pub enum Turning {
-```
+### Deviations recorded
 
-```yaml
-# .github/workflows/ci.yml — one extra line so the lib-only build cannot rot
-- run: cargo test -p murmuration --lib --no-default-features
-```
+`docs/model.md` collects the reference's documented adaptations to the paper
+(banked coordinated turn, the `1/cos β` lift, the stable adaptive radius,
+all-round cohesion with `W_COH = 0.65`, the capped vertical roost force, the
+committed signed roost return, the separation Gaussian factor of 2, the
+initial condition) and the four `murmur-ref`-specific choices: sequential
+decisions, an extra `--extended` line, the `Snapshot` exchange type, and the
+deferral of the turn/agitation experiments to phase 7. The reference's known
+gaps (the flock mills over the roost rather than crossing it; long runs grow
+elongated and can split) are recorded there too, unfixed on purpose.
 
-Nothing else changes: the binary, the `xtask` and the render tests all run
-with the default features, exactly as today. If this lands, `murmur-ref`
-depends on the crate — from a checkout
-(`murmuration = { path = "../murmuration", default-features = false }`)
-or from crates.io once released — and reuses `sim` and `sim::analysis`
-wholesale, which keeps one source of truth for the model.
+### Open
 
-Optional cosmetic follow-up, left to the maintainer: un-hide `pub mod sim`
-and soften the "no stability guarantee" note, since it would now be a
-deliberate library surface.
-
-**Blocked on**
-
-The maintainer's answer: apply the feature gate upstream and depend on the
-crate, or vendor `sim/` into `murmur-ref` with attribution and strip the
-terminal code. Until then the phase 1 work (statistics wiring,
-`export`/`import`, the headless acceptance run) is on hold, per instruction;
-nothing has been vendored.
+- (none) for phase 1. Phase 2 is the first GPU simulation (brute-force
+  neighbour search) and the `--parity` harness, which will use `state::export`
+  and `state::import`.

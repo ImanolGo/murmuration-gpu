@@ -185,6 +185,128 @@ GPU are genuinely different machines:
   the WebGPU limit of eight storage buffers per stage. `shaders/grid.wgsl`
   documents both.
 
+### Phase 4 adaptations
+
+Phase 4 added no model behaviour: the audit in `PLAN.md` phase 4 checks each of
+its bullets function by function and finds every one already ported in phase 2
+and passing parity. (The falcon-dependent rules — flee, flash expansion and the
+alarm copying — are inert with no falcon, which is this phase's state; they
+belong to phase 7.) The entries here are about making the 100,000-bird
+acceptance run feasible and honest, and they are recorded as changes to the
+plan, not to the model.
+
+- **The initial cloud grows with the bird count (`World::new_density_scaled`).**
+  The model's initial condition is a fixed 18 m ellipsoid (`CLOUD_RADIUS`). At
+  100,000 birds the same volume holds fifty times the birds, so the flock starts
+  as a near-solid ball: the first simulated second took over 50 s and tripped the
+  driver's GPU watchdog (device lost) on an early attempt. `new_density_scaled`
+  grows the radius by `(n / 2000)^(1/3)` to hold the density of the 2,000-bird
+  cloud, so the initial state is the *same kind* of state at every count. It
+  draws the birds in the same order, so `World::new` — the model's own initial
+  condition, the one the oracle is verified against byte for byte — is unchanged;
+  the scaled cloud is used only by the large-`n` GPU run.
+- **The GPU grid's cell is 1 m, not the oracle's `GRID_CELL = 4.0 m`.** Phase 3
+  tied the two together; the cell is an acceleration parameter, not model state,
+  because both engines discard every candidate outside the exact radius, so any
+  cell size returns the same neighbour set (the phase 3 test compares them
+  against the brute-force walk). At the model's settled density the interaction
+  radius is under 1 m at 100,000 birds, and the 4 m cell then makes each query
+  scan roughly an order of magnitude more candidates than the 1 m cell; see
+  `grid::CELL`. This is the acceleration freedom the plan's phase 3 text already
+  allows ("a free performance knob"), and it is a plan change, never a model
+  change. It is a good choice for the settled density but a bad one for the
+  radius *tail* — see the bounded query below, which is what makes the tail
+  affordable.
+- **The neighbour query is bounded by the flock size, not only by the radius
+  box.** `gather_grid` walks every cell the radius box covers, so its cost is
+  cubic in `R`; with the model's `params::R_MAX = 100 m` a single straggler at
+  `R = 100 m` costs `201³ ≈ 8.1e6` cells at the 1 m cell — as much as ~300,000
+  ordinary birds — and the 100,000-bird run's step time jumped two orders of
+  magnitude the second the first wide-radius bird appeared (`docs/progress.md`,
+  third attempt; the model does grow such birds, `Rh ≈ 177 m`). `gather` and
+  `gather_centrality` (`shaders/sim.wgsl`) therefore take the brute-force walk
+  whenever the box covers more cells than the flock has birds. Both walks keep a
+  candidate only after the same exact `d2 <= r2` test, so the neighbour set is
+  identical — the same acceleration freedom as the cell size, never a model
+  change — and `tests/grid.rs::a_wide_radius_query_matches_bruteforce` forces the
+  crossover and pins it. The choice is observable: `sim::Clock::wide` counts the
+  queries that fell back each step (`Sim::wide_queries`).
+- **`--coherence` samples a lighter statistic set than `--analyze`.** The
+  criteria in `docs/coherence-100k.md` read only `|N|`, `R`, `v`, `roll`, the
+  5 m cluster fraction and a few O(N) reductions of the positions, but
+  `analysis::compute` also pays for a 15 m nearest-neighbour scan that is almost
+  all-pairs at a dense flock: measured at 100,000 birds the full metric set costs
+  ~26 s per simulated second, so the 600 s run would take ~5 h and almost all of
+  it would be statistics the verdict never reads. `coherence::sample` computes
+  exactly the criteria fields with the same formulas in the same order as
+  `compute`, and `tests/analyze.rs` asserts they are bit-identical; the one
+  non-free field, the cluster fraction, is the same `analysis::cluster_fraction`
+  function `compute` calls and still runs every second. `--analyze` keeps the
+  full reference output for comparability. This is also a change to the plan
+  (item 2 had the run go through `--analyze`).
+- **Both runs submit in small batches, not one command buffer per second.** At
+  large counts a single `decide` can take seconds, so a whole second of
+  dispatches in one submission can outlive the watchdog; ten steps per submission
+  keeps each one short while the sampling stays per second.
+- **The long runs repair themselves when the driver hangs.** The development
+  laptop's NVIDIA driver hangs on a long continuous compute run (`Xid 109`,
+  `CTX SWITCH TIMEOUT`; a known Linux driver bug, seen twice on the 100,000-bird
+  run after ~50 min and ~1 h 20 min). Every wait is bounded
+  (`device::WAIT_BUDGET`, 60 s) so the hang is reported as `device::Stalled`
+  rather than blocking for ever in `poll(wait_indefinitely)`, and
+  `analyze::each_second_resilient` then reopens the device and resumes from the
+  last sampled second. This is *not* a model change: the resume state
+  (`sim::RawState`) keeps each bird's own random stream and the grid is derived
+  from the positions, so the repaired run takes exactly the steps the
+  uninterrupted one would have —
+  `tests/analyze.rs::a_resumed_run_takes_the_same_steps` asserts the records are
+  byte-identical after a repair. It is recorded here because the acceptance's
+  numbers come from a run the driver interrupted, and the record must say so.
+  Two details of the repair are model-neutral but were bugs once: the run's step
+  count rewinds to the last sample with the flock (otherwise the sampler drifted
+  off the whole seconds), and `MAX_RESUME_TRIES = 3` fruitless repairs end the run
+  with `RunError::NoProgress` instead of retrying for ever.
+
+### Phase 5 adaptations
+
+Phase 5 is the first render (`crates/murmur-render`), which mirrors the
+reference's `render/` modules. Its deviations from them:
+
+- **The camera is driven from a CPU copy of the flock, read back every frame.**
+  `render::camera` in the reference reads the live `World`; here the same
+  camera code runs on the CPU over a full GPU→CPU readback of the bird records
+  each frame. The framing maths is the reference's, but the readback is a
+  temporary cost PLAN.md phase 9 removes (the renderer will read the bird
+  storage buffer directly). It is a performance deviation, not a visual one.
+- **Darkness is multiplicative and black, where the reference uses INK.** The
+  reference's optical-depth compositor adds `INK`-tinted optical depth and
+  tone-maps the result. This renderer instead writes coverage into an HDR target
+  with `dst *= 1 - coverage`, with per-bird `coverage = 1 - exp(-exposure·raw)`,
+  so the product over the flock is `exp(-exposure·tau)` — the same optical depth
+  the reference accumulates, but composited in one pass and darkened toward
+  black rather than toward a colour. Tone mapping then maps that optical depth
+  to the output; the identity (clamp) map is used for now.
+- **Exposure adapts from a 256-bin histogram, with a blocking readback.** The
+  reference's automatic exposure is mirrored in its constants
+  (`DEFAULT_EXPOSURE = 25`, `TARGET_TAU = 1.204`, `EXPOSURE_TAU = 4`, exposure
+  clamped to `[1, 400]`) and in its behaviour (a histogram of per-pixel optical
+  depth drives the target exposure), but the histogram is summed on the GPU and
+  read back on the host each frame, which stalls the pipeline. Phase 9 replaces
+  the readback; the exposure it produces follows the reference's rule. That
+  includes the rule's floor: at 20,000 birds and above a settled flock's
+  80th-percentile raw depth already exceeds `TARGET_TAU`, so the exposure rests
+  at `EXPOSURE_MIN = 1.0` and the core is as dark as the rule allows. It is the
+  reference's own behaviour at density, not a port artifact (`docs/progress.md`,
+  phase 5), and it is not tuned here.
+- **The sky ray includes the horizontal term.** The reference's sky varies by
+  row only (a function of the view's pitch); here the ray's direction is used,
+  so the gradient varies with the actual view direction. The palette and the
+  time-of-evening interpolation are the reference's.
+- **The reference's distance-opacity fade buffer is not implemented yet.** The
+  reference fades a bird's opacity with distance into a separate buffer; this
+  pass has the distance term in the coverage but not the reference's separate
+  fade target. Recorded so the difference is visible rather than assumed absent.
+
 ## Known gaps (reported, not hidden)
 
 Carried over from the reference and not fixed here (fixing them would change the
@@ -194,4 +316,6 @@ model the GPU mirrors):
   radial for a tangentially moving bird, so it cannot remove the initial angular
   momentum.
 - Long runs grow elongated (`I2/I1`, `I3/I1` above the paper's ranges) and can
-  split.
+  split. Now visible in a still: the 60 s, 20,000-bird flock in
+  `docs/still-20k.png` has become a ribbon, while the same 60 s at 1,000,000
+  birds (`docs/still-1m.png`) is still a mass.

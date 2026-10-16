@@ -221,6 +221,103 @@ count comes from the 4 m cells rather than from the bird count. Details in
 keeps a coherent display over the roost for 10 simulated minutes without
 collapsing or dispersing, judged by the statistics.
 
+**Update (2026-10-15) — the audit: the model work was already phase 2.** Before
+writing code this phase, each bullet above was checked function by function
+against `murmur-ref` (the specification). Every behavioural item is already in
+`shaders/sim.wgsl`, ported in phase 2 and passing parity, so this phase adds no
+model behaviour:
+
+| bullet | reference | shader | done in |
+| ------ | --------- | ------ | ------- |
+| boundary-weighted cohesion | `social.rs` `coh.normalize_or_zero() * (W_COH * centrality)` | `resolve` same line | phase 2 |
+| banked turning from requested roll | `flight.rs::step_bird` (`atan(a_lat/g)`, lag, rate) | `step_bird` | phase 2 |
+| cruise speed | `social.rs` speed control + `step_bird` lift/drag/thrust | `resolve` + `step_bird` | phase 2 |
+| preferred altitude | `social.rs` capped vertical roost pull | `resolve` | phase 2 |
+| roost attraction, committed returns | `social.rs` `returning` block | `resolve` | phase 2 |
+| seeded per-bird random force | `social.rs::random_unit` (ChaCha8) | counter PCG keyed `(seed,id)` | phase 2 (documented adaptation) |
+
+The parts of `social::decide` that are *not* in the shader are the ones that are
+inert with no falcon to run in this phase: `escape::force` (flee and flash
+expansion) is absent, and the copying rule is present but never fires because no
+bird is alarmed; the alarm update in `world::step` likewise needs a falcon. They
+belong to phase 7 and change nothing here — on the CPU they return `Vec3::ZERO`
+/ do nothing when `falcon` is `None`, which is exactly the state this phase
+runs. So the only genuinely new work is:
+
+1. `--analyze` in the app, printing the same per-second line and summary as
+   `cargo run -p murmur-ref --bin analyze --release -- --birds N --seed S
+   --seconds T [--extended]`. The GPU's noise is not bit-identical to the
+   CPU's, so at one seed the output is *statistically* comparable, not
+   identical (the same caveat `--parity` records).
+2. The 100,000-bird, 10-simulated-minute coherence run. Its pass/fail criteria
+   are fixed in advance in `docs/coherence-100k.md` (the acceptance is
+   subjective, so it is written down before the data) and checked by
+   `murmur_gpu::coherence`.
+
+**Update (2026-10-15) — making the 100,000-bird run feasible.** The acceptance
+run at 100,000 birds exposed three plan/implementation mismatches, all recorded
+in `docs/model.md` and `docs/progress.md`:
+
+- The model's fixed 18 m initial cloud holds ~50× more birds at 100,000 than the
+  2,000-bird cloud it was designed for, so the first second took over 50 s and
+  tripped the GPU watchdog. `World::new_density_scaled` grows the radius as
+  `n^(1/3)` to hold the density; `World::new` (the oracle's own initial
+  condition) is unchanged.
+- Phase 3 tied the GPU grid cell to the oracle's `GRID_CELL = 4.0 m`. The cell
+  is an acceleration knob (the exact-distance check makes the neighbour sets
+  identical for any cell), and 4 m is far too coarse for the model's sub-metre
+  radius at 100,000 birds. `grid::CELL = 1.0 m` (the plan's phase 3 text already
+  calls the cell "a free performance knob").
+- The plan's item 2 had the run go through `--analyze`, but the full reference
+  metric set costs ~26 s per simulated second at 100,000 birds (its 15 m
+  nearest-neighbour scan is nearly all-pairs in a dense flock), i.e. ~5 h for
+  600 s, and almost all of it is statistics the criteria never read. So the run
+  uses `--coherence SECONDS`, a lighter sampler that computes exactly the
+  criteria fields (asserted bit-identical to `analysis::compute` by
+  `tests/analyze.rs`); `--analyze` keeps the full reference output.
+
+**Met (2026-10-16).** The criterion is the line at the top of this phase: *at
+100,000 birds the flock keeps a coherent display over the roost for 10 simulated
+minutes without collapsing or dispersing, judged by the statistics.* The run
+
+```
+target/release/murmuration-gpu --coherence 600 --birds 100000 --seed 1
+```
+
+**passes all 13 pre-declared criteria over all 600 seconds**, in one
+uninterrupted run: 2 h 29 min of wall clock, zero device repairs, no `Xid`.
+Thresholds were fixed before the run (`docs/coherence-100k.md`) and not touched;
+the verdict was re-derived independently from the printed series. The series is
+`docs/analyze-100k-600s.txt`, the argument is `docs/progress.md` (the third
+attempt) and `docs/coherence-100k.md` ("Verdict").
+
+The line here used to read "Met (2026-10-15): recorded in `docs/progress.md` and
+`docs/analyze-100k-600s.txt`", which was **wrong** — that file held only the
+run's header, because the run hung and was killed before it printed a second.
+Getting to a real verdict took three attempts and found three problems, all now
+recorded and fixed:
+
+- The run is **hours, not the hour** the earlier estimate gave, because `decide`
+  is density-bound and the settled flock is several times denser than the
+  initial cloud (`docs/coherence-100k.md`, "How long it really takes").
+- The neighbour query's cost is **cubic in the adaptive radius** while the model
+  lets a straggler's radius reach `R_MAX = 100 m`. The accepted run's own record
+  shows the tail spiking to 55.9 m at `t = 152` — the window both earlier runs
+  died in — where one bird costs as much as ~300,000 ordinary ones. The query is
+  now bounded (`gather` in `sim.wgsl`: when the box outgrows the flock, walk the
+  flock, same exact neighbour set, pinned by `tests/grid.rs`). This is an
+  acceleration change, never a model change.
+- The NVIDIA driver **hangs** on a run this long (`Xid 109`, a known Linux
+  driver bug), which killed the first two attempts. Every wait is now bounded and
+  the run reopens the device and resumes from the last sample, with the resumed
+  state proved byte-identical to the uninterrupted one
+  (`tests/analyze.rs::a_resumed_run_takes_the_same_steps`). The accepted run did
+  not need a single repair.
+
+The acceptance therefore rests on the third item's repair path being correct
+rather than on having been lucky, but the run that produced the verdict was
+clean: the repairs are a net that was not used.
+
 ## Phase 5 — First render: sky and coverage
 
 - Ground observer camera, following the flock and framing it, as in the
@@ -235,6 +332,43 @@ collapsing or dispersing, judged by the statistics.
 **Accept:** at 1M birds the image reads as a dark, dense flock with lighter
 edges against the sky, similar in feel to the reference photographs. Capture
 stills into `docs/`.
+
+- Phase 5 lives in `crates/murmur-render` (`camera`, `sky`, `renderer`, `png`,
+  shaders `scene.wgsl`, `sky_pass.wgsl`, `coverage.wgsl`, `exposure.wgsl`,
+  `tonemap.wgsl`) and is driven by the app's `--still PATH` (headless) and the
+  window. The camera is a CPU port of the reference `render/camera.rs` fed by a
+  readback for now (PLAN.md phase 9 removes the readback); the deviations from
+  the reference renderer are listed in `docs/model.md` ("Phase 5 adaptations").
+- Note the same cost shape as phase 4 applies to a 1M-bird still: a *settled*
+  1M flock is much denser than `--bench`'s fresh one, so the still needs the
+  seconds it simulates to be chosen from a measurement, not from the bench's
+  fresh-flock step time.
+
+**Met (2026-10-16).** `docs/still-1m.png` — 1,000,000 birds, seed 1, 60 s of
+simulation — is a dark, dense flock with lighter speckled edges against the dusk
+sky; `docs/still-20k.png` is the same frame time and material at a fiftieth of
+the birds, and reads differently in shape for a reason that belongs to the model
+rather than the renderer: the 20,000-bird flock has stretched into a ribbon by
+60 s (the long-run elongation in "Known gaps"), where the million-bird flock is
+still a billowing mass. The frame
+cost **3,344 s (56 min)**, 55.7 s per simulated second: exactly the "capture
+stills" point above — the still is a simulation, not a screenshot. Both frames sit
+at the exposure rule's floor (`EXPOSURE_MIN = 1.0`), so the core saturates to
+black; that is the reference's own rule at this density (`docs/progress.md`,
+phase 5), recorded rather than tuned.
+
+Getting there changed two things, both in `docs/progress.md`:
+
+- The first capture, at 20 s, was a transient *tube*, not a settled flock — the
+  density-scaled initial cloud at 1M is ~143 m across, near the 150 m roost — so
+  the acceptance still simulates 60 s.
+- The first attempt at 1M exposed a real bug: `Sim::advance_seconds` queued the
+  whole interval and then made one bounded wait, so a healthy GPU reported
+  `Stalled { waited: 60s }`. It now drains after every 10-step batch.
+
+The acceptance word "similar" is a judgement, not a measurement: the terminal
+reference draws braille cells, so tone, shape and edge structure are what is
+claimed, not image equality. Long-run elongation stays a known gap.
 
 ## Phase 6 — Birds
 

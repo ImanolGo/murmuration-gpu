@@ -10,8 +10,13 @@ use std::mem::{offset_of, size_of};
 use murmur_gpu::bird::Bird;
 use murmur_gpu::params::Params;
 
-/// The shader every GPU struct is checked against.
-const SHADER: &str = include_str!("../shaders/common.wgsl");
+/// The shader every GPU struct is checked against: `common.wgsl` carries
+/// `Params`, `bird.wgsl` carries `Bird`.
+const SHADER: &str = concat!(
+    include_str!("../shaders/common.wgsl"),
+    "\n",
+    include_str!("../shaders/bird.wgsl"),
+);
 
 /// Extracts the field names of `struct <name> { ... }` from WGSL, handling
 /// several fields per line and ignoring comments.

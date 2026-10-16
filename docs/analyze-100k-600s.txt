@@ -1,0 +1,623 @@
+MESA-EGL: warning: pci id for fd 21: 10de:1f91, driver (null)
+pci id for fd 22: 10de:1f91, driver (null)
+pci id for fd 23: 10de:1f91, driver (null)
+MESA-EGL: warning: egl: failed to create dri2 screen
+MESA-EGL: warning: DRI2: failed to create screen
+# murmuration-gpu --coherence birds=100000 seed=1 seconds=600 turning=Base
+# adapter "NVIDIA GeForce GTX 1650 with Max-Q Design" on Vulkan (DiscreteGpu), driver "NVIDIA" 615.78.08
+t=   1.0s birds=100000 |N|=10.04 R= 2.22m cluster=100.0% spread= 41.1m Rh=195.8m dz= 9.6m clamp= 0.0% v=10.0m/s hstd=11.4m rc=130.5m Rmax=  3.39m wide= 0.0%
+t=   2.0s birds=100000 |N|=7.25 R= 1.94m cluster=100.0% spread= 40.3m Rh=186.6m dz= 8.9m clamp= 0.0% v=10.0m/s hstd=10.6m rc=121.1m Rmax=  3.03m wide= 0.0%
+t=   3.0s birds=100000 |N|=6.90 R= 1.86m cluster=100.0% spread= 39.4m Rh=177.7m dz= 8.4m clamp= 0.0% v=10.0m/s hstd= 9.9m rc=111.7m Rmax=  3.25m wide= 0.0%
+t=   4.0s birds=100000 |N|=6.93 R= 1.80m cluster=100.0% spread= 38.6m Rh=168.0m dz= 7.9m clamp= 0.0% v=10.0m/s hstd= 9.4m rc=102.3m Rmax=  3.16m wide= 0.0%
+t=   5.0s birds=100000 |N|=6.99 R= 1.74m cluster=100.0% spread= 37.8m Rh=158.3m dz= 7.5m clamp= 0.0% v=10.0m/s hstd= 8.9m rc= 93.0m Rmax=  2.98m wide= 0.0%
+t=   6.0s birds=100000 |N|=7.00 R= 1.67m cluster=100.0% spread= 37.0m Rh=148.7m dz= 7.0m clamp= 0.0% v=10.0m/s hstd= 8.4m rc= 83.9m Rmax=  3.01m wide= 0.0%
+t=   7.0s birds=100000 |N|=7.02 R= 1.61m cluster=100.0% spread= 36.2m Rh=139.5m dz= 6.6m clamp= 0.0% v=10.0m/s hstd= 7.9m rc= 74.9m Rmax=  2.97m wide= 0.0%
+t=   8.0s birds=100000 |N|=6.97 R= 1.55m cluster=100.0% spread= 35.5m Rh=130.3m dz= 6.3m clamp= 0.0% v=10.0m/s hstd= 7.5m rc= 66.2m Rmax=  2.97m wide= 0.0%
+t=   9.0s birds=100000 |N|=6.92 R= 1.50m cluster=100.0% spread= 34.8m Rh=121.1m dz= 6.0m clamp= 0.0% v=10.0m/s hstd= 7.1m rc= 57.9m Rmax=  2.82m wide= 0.0%
+t=  10.0s birds=100000 |N|=6.88 R= 1.46m cluster=100.0% spread= 34.1m Rh=111.9m dz= 5.7m clamp= 0.0% v=10.0m/s hstd= 6.8m rc= 50.1m Rmax=  3.32m wide= 0.0%
+t=  11.0s birds=100000 |N|=6.85 R= 1.42m cluster=100.0% spread= 33.4m Rh=102.8m dz= 5.4m clamp= 0.0% v=10.0m/s hstd= 6.5m rc= 43.1m Rmax=  2.95m wide= 0.0%
+t=  12.0s birds=100000 |N|=6.84 R= 1.39m cluster=100.0% spread= 32.8m Rh= 94.0m dz= 5.2m clamp= 0.0% v=10.0m/s hstd= 6.2m rc= 37.5m Rmax=  2.80m wide= 0.0%
+t=  13.0s birds=100000 |N|=6.83 R= 1.35m cluster=100.0% spread= 32.2m Rh= 87.3m dz= 4.9m clamp= 0.0% v=10.0m/s hstd= 5.9m rc= 34.0m Rmax=  2.73m wide= 0.0%
+t=  14.0s birds=100000 |N|=6.82 R= 1.32m cluster=100.0% spread= 31.7m Rh= 93.0m dz= 4.7m clamp= 0.0% v=10.0m/s hstd= 5.7m rc= 33.1m Rmax=  2.76m wide= 0.0%
+t=  15.0s birds=100000 |N|=6.80 R= 1.29m cluster=100.0% spread= 31.2m Rh= 99.7m dz= 4.6m clamp= 0.0% v=10.0m/s hstd= 5.5m rc= 35.1m Rmax=  2.70m wide= 0.0%
+t=  16.0s birds=100000 |N|=6.79 R= 1.27m cluster=100.0% spread= 30.8m Rh=107.2m dz= 4.4m clamp= 0.0% v=10.0m/s hstd= 5.3m rc= 39.5m Rmax=  2.70m wide= 0.0%
+t=  17.0s birds=100000 |N|=6.78 R= 1.25m cluster=100.0% spread= 30.5m Rh=115.2m dz= 4.3m clamp= 0.0% v=10.0m/s hstd= 5.1m rc= 45.7m Rmax=  2.79m wide= 0.0%
+t=  18.0s birds=100000 |N|=6.80 R= 1.23m cluster=100.0% spread= 30.3m Rh=123.7m dz= 4.2m clamp= 0.0% v=10.0m/s hstd= 5.0m rc= 53.1m Rmax=  3.29m wide= 0.0%
+t=  19.0s birds=100000 |N|=6.79 R= 1.21m cluster=100.0% spread= 30.2m Rh=132.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 61.2m Rmax=  4.44m wide= 0.0%
+t=  20.0s birds=100000 |N|=6.80 R= 1.19m cluster=100.0% spread= 30.1m Rh=142.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 69.8m Rmax=  6.53m wide= 0.0%
+t=  21.0s birds=100000 |N|=6.77 R= 1.18m cluster=100.0% spread= 30.1m Rh=151.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 78.7m Rmax=  9.28m wide= 0.0%
+t=  22.0s birds=100000 |N|=6.72 R= 1.16m cluster=100.0% spread= 30.1m Rh=160.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 87.9m Rmax=  9.56m wide= 0.0%
+t=  23.0s birds=100000 |N|=6.70 R= 1.15m cluster=100.0% spread= 30.1m Rh=167.5m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 97.2m Rmax=  9.10m wide= 0.0%
+t=  24.0s birds=100000 |N|=6.71 R= 1.14m cluster=100.0% spread= 29.9m Rh=173.5m dz= 3.6m clamp= 0.0% v=10.0m/s hstd= 4.4m rc=106.4m Rmax=  8.66m wide= 0.0%
+t=  25.0s birds=100000 |N|=6.79 R= 1.13m cluster=100.0% spread= 29.2m Rh=177.8m dz= 3.6m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=115.2m Rmax=  8.24m wide= 0.0%
+t=  26.0s birds=100000 |N|=6.91 R= 1.10m cluster=100.0% spread= 27.9m Rh=181.9m dz= 3.6m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=123.2m Rmax=  7.84m wide= 0.0%
+t=  27.0s birds=100000 |N|=7.10 R= 1.07m cluster=100.0% spread= 26.0m Rh=182.8m dz= 3.5m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=130.3m Rmax=  7.46m wide= 0.0%
+t=  28.0s birds=100000 |N|=7.38 R= 1.02m cluster=100.0% spread= 23.7m Rh=181.3m dz= 3.6m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=136.2m Rmax=  7.10m wide= 0.0%
+t=  29.0s birds=100000 |N|=8.09 R= 0.95m cluster=100.0% spread= 21.5m Rh=182.5m dz= 3.6m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=140.7m Rmax=  6.76m wide= 0.0%
+t=  30.0s birds=100000 |N|=8.82 R= 0.87m cluster=100.0% spread= 19.5m Rh=189.3m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.4m rc=143.6m Rmax= 13.82m wide= 0.0%
+t=  31.0s birds=100000 |N|=8.46 R= 0.79m cluster=100.0% spread= 18.2m Rh=192.1m dz= 3.7m clamp= 0.0% v= 9.9m/s hstd= 4.4m rc=144.6m Rmax= 11.73m wide= 0.0%
+t=  32.0s birds=100000 |N|=7.47 R= 0.75m cluster=100.0% spread= 17.6m Rh=191.7m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.4m rc=143.6m Rmax= 10.09m wide= 0.0%
+t=  33.0s birds=100000 |N|=6.74 R= 0.74m cluster= 99.6% spread= 17.5m Rh=196.7m dz= 3.8m clamp= 0.0% v=10.1m/s hstd= 4.4m rc=140.7m Rmax= 11.58m wide= 0.0%
+t=  34.0s birds=100000 |N|=6.87 R= 0.74m cluster= 99.6% spread= 17.7m Rh=201.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=135.9m Rmax= 15.58m wide= 0.0%
+t=  35.0s birds=100000 |N|=6.86 R= 0.73m cluster= 99.6% spread= 18.1m Rh=197.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=129.7m Rmax= 16.09m wide= 0.0%
+t=  36.0s birds=100000 |N|=6.63 R= 0.74m cluster= 99.6% spread= 18.5m Rh=188.5m dz= 3.9m clamp= 0.0% v= 9.9m/s hstd= 4.6m rc=122.4m Rmax= 15.53m wide= 0.0%
+t=  37.0s birds=100000 |N|=6.43 R= 0.76m cluster= 99.6% spread= 18.8m Rh=180.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=114.3m Rmax= 16.99m wide= 0.0%
+t=  38.0s birds=100000 |N|=6.43 R= 0.78m cluster= 99.6% spread= 18.9m Rh=171.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=105.6m Rmax= 16.65m wide= 0.0%
+t=  39.0s birds=100000 |N|=6.45 R= 0.80m cluster= 99.6% spread= 19.0m Rh=162.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 96.6m Rmax= 13.71m wide= 0.0%
+t=  40.0s birds=100000 |N|=6.43 R= 0.81m cluster= 99.6% spread= 19.1m Rh=151.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 87.5m Rmax= 11.19m wide= 0.0%
+t=  41.0s birds=100000 |N|=6.40 R= 0.83m cluster= 99.6% spread= 19.3m Rh=141.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 78.4m Rmax=  9.17m wide= 0.0%
+t=  42.0s birds=100000 |N|=6.38 R= 0.85m cluster= 99.6% spread= 19.6m Rh=132.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 69.5m Rmax=  7.45m wide= 0.0%
+t=  43.0s birds=100000 |N|=6.33 R= 0.88m cluster= 99.6% spread= 20.0m Rh=122.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 60.9m Rmax=  5.50m wide= 0.0%
+t=  44.0s birds=100000 |N|=6.31 R= 0.91m cluster= 99.6% spread= 20.5m Rh=113.4m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.8m Rmax=  3.88m wide= 0.0%
+t=  45.0s birds=100000 |N|=6.30 R= 0.94m cluster= 99.6% spread= 21.1m Rh=104.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 45.3m Rmax=  3.06m wide= 0.0%
+t=  46.0s birds=100000 |N|=6.31 R= 0.97m cluster= 99.6% spread= 21.8m Rh= 97.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.0m Rmax=  3.28m wide= 0.0%
+t=  47.0s birds=100000 |N|=6.32 R= 1.00m cluster= 99.6% spread= 22.6m Rh=107.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 34.3m Rmax=  3.06m wide= 0.0%
+t=  48.0s birds=100000 |N|=6.32 R= 1.04m cluster= 99.6% spread= 23.5m Rh=116.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 32.1m Rmax=  2.84m wide= 0.0%
+t=  49.0s birds=100000 |N|=6.34 R= 1.07m cluster= 99.6% spread= 24.5m Rh=126.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 32.7m Rmax=  2.84m wide= 0.0%
+t=  50.0s birds=100000 |N|=6.35 R= 1.10m cluster= 99.6% spread= 25.5m Rh=136.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 36.2m Rmax=  3.15m wide= 0.0%
+t=  51.0s birds=100000 |N|=6.37 R= 1.13m cluster= 99.6% spread= 26.7m Rh=146.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.6m Rmax=  2.94m wide= 0.0%
+t=  52.0s birds=100000 |N|=6.38 R= 1.16m cluster= 99.6% spread= 27.9m Rh=156.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 48.5m Rmax=  3.02m wide= 0.0%
+t=  53.0s birds=100000 |N|=6.40 R= 1.18m cluster= 99.6% spread= 29.1m Rh=165.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 56.2m Rmax=  2.85m wide= 0.0%
+t=  54.0s birds=100000 |N|=6.41 R= 1.21m cluster= 99.6% spread= 30.4m Rh=173.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 64.4m Rmax=  2.93m wide= 0.0%
+t=  55.0s birds=100000 |N|=6.42 R= 1.23m cluster= 99.6% spread= 31.8m Rh=179.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 73.0m Rmax=  3.08m wide= 0.0%
+t=  56.0s birds=100000 |N|=6.43 R= 1.25m cluster= 99.6% spread= 33.2m Rh=182.6m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.4m rc= 81.9m Rmax=  3.14m wide= 0.0%
+t=  57.0s birds=100000 |N|=6.44 R= 1.27m cluster= 99.6% spread= 34.6m Rh=182.6m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.3m rc= 91.0m Rmax=  3.02m wide= 0.0%
+t=  58.0s birds=100000 |N|=6.45 R= 1.29m cluster= 99.6% spread= 36.1m Rh=179.4m dz= 3.6m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=100.1m Rmax=  3.12m wide= 0.0%
+t=  59.0s birds=100000 |N|=6.47 R= 1.31m cluster= 99.6% spread= 37.6m Rh=173.4m dz= 3.5m clamp= 0.0% v=10.0m/s hstd= 4.2m rc=109.4m Rmax=  3.12m wide= 0.0%
+t=  60.0s birds=100000 |N|=6.53 R= 1.32m cluster= 99.6% spread= 38.9m Rh=168.9m dz= 3.5m clamp= 0.0% v=10.0m/s hstd= 4.1m rc=118.7m Rmax=  3.15m wide= 0.0%
+t=  61.0s birds=100000 |N|=6.60 R= 1.32m cluster= 99.6% spread= 39.7m Rh=173.4m dz= 3.4m clamp= 0.0% v=10.0m/s hstd= 4.1m rc=128.0m Rmax=  3.31m wide= 0.0%
+t=  62.0s birds=100000 |N|=6.71 R= 1.31m cluster=100.0% spread= 39.7m Rh=177.0m dz= 3.3m clamp= 0.0% v=10.0m/s hstd= 4.0m rc=136.8m Rmax=  3.15m wide= 0.0%
+t=  63.0s birds=100000 |N|=6.81 R= 1.29m cluster=100.0% spread= 39.1m Rh=179.2m dz= 3.3m clamp= 0.0% v=10.0m/s hstd= 3.9m rc=144.5m Rmax=  3.31m wide= 0.0%
+t=  64.0s birds=100000 |N|=6.92 R= 1.26m cluster=100.0% spread= 38.2m Rh=184.9m dz= 3.2m clamp= 0.0% v=10.0m/s hstd= 3.8m rc=150.7m Rmax=  5.73m wide= 0.0%
+t=  65.0s birds=100000 |N|=7.05 R= 1.22m cluster=100.0% spread= 37.1m Rh=192.6m dz= 3.2m clamp= 0.0% v=10.0m/s hstd= 3.8m rc=154.8m Rmax= 10.24m wide= 0.0%
+t=  66.0s birds=100000 |N|=7.32 R= 1.17m cluster=100.0% spread= 36.0m Rh=199.7m dz= 3.2m clamp= 0.0% v=10.0m/s hstd= 3.8m rc=156.8m Rmax=  9.92m wide= 0.0%
+t=  67.0s birds=100000 |N|=7.63 R= 1.10m cluster=100.0% spread= 35.1m Rh=205.4m dz= 3.2m clamp= 0.0% v=10.0m/s hstd= 3.8m rc=156.5m Rmax= 14.30m wide= 0.0%
+t=  68.0s birds=100000 |N|=7.59 R= 1.04m cluster=100.0% spread= 34.4m Rh=209.6m dz= 3.3m clamp= 0.0% v=10.0m/s hstd= 3.9m rc=153.8m Rmax= 16.48m wide= 0.0%
+t=  69.0s birds=100000 |N|=7.33 R= 0.99m cluster=100.0% spread= 34.0m Rh=212.3m dz= 3.4m clamp= 0.0% v=10.0m/s hstd= 4.0m rc=149.0m Rmax= 17.36m wide= 0.0%
+t=  70.0s birds=100000 |N|=7.01 R= 0.96m cluster=100.0% spread= 33.8m Rh=213.0m dz= 3.5m clamp= 0.0% v=10.0m/s hstd= 4.2m rc=142.2m Rmax= 14.30m wide= 0.0%
+t=  71.0s birds=100000 |N|=6.83 R= 0.95m cluster= 98.8% spread= 33.2m Rh=215.9m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.3m rc=134.1m Rmax= 12.22m wide= 0.0%
+t=  72.0s birds=100000 |N|=6.83 R= 0.94m cluster= 98.7% spread= 31.8m Rh=212.0m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.4m rc=125.2m Rmax= 10.98m wide= 0.0%
+t=  73.0s birds=100000 |N|=6.87 R= 0.92m cluster= 98.6% spread= 29.8m Rh=207.0m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.4m rc=116.2m Rmax= 17.35m wide= 0.0%
+t=  74.0s birds=100000 |N|=6.92 R= 0.90m cluster= 98.6% spread= 27.6m Rh=196.7m dz= 3.8m clamp= 0.0% v= 9.9m/s hstd= 4.4m rc=107.3m Rmax= 21.47m wide= 0.0%
+t=  75.0s birds=100000 |N|=6.94 R= 0.87m cluster= 98.6% spread= 25.4m Rh=187.8m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.4m rc= 98.4m Rmax= 22.78m wide= 0.0%
+t=  76.0s birds=100000 |N|=6.97 R= 0.85m cluster= 98.6% spread= 23.3m Rh=178.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.4m rc= 89.7m Rmax= 24.47m wide= 0.0%
+t=  77.0s birds=100000 |N|=7.01 R= 0.82m cluster= 98.6% spread= 21.3m Rh=169.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.4m rc= 81.2m Rmax= 24.72m wide= 0.0%
+t=  78.0s birds=100000 |N|=7.05 R= 0.79m cluster= 98.6% spread= 19.3m Rh=161.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 72.9m Rmax= 23.42m wide= 0.0%
+t=  79.0s birds=100000 |N|=7.08 R= 0.76m cluster= 98.4% spread= 17.4m Rh=152.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 64.9m Rmax= 20.49m wide= 0.0%
+t=  80.0s birds=100000 |N|=7.10 R= 0.74m cluster= 98.3% spread= 15.7m Rh=142.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 57.5m Rmax= 17.84m wide= 0.0%
+t=  81.0s birds=100000 |N|=7.14 R= 0.71m cluster= 98.3% spread= 14.1m Rh=133.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 50.7m Rmax= 21.68m wide= 0.0%
+t=  82.0s birds=100000 |N|=7.19 R= 0.69m cluster= 98.3% spread= 12.7m Rh=124.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.5m rc= 45.0m Rmax= 22.05m wide= 0.0%
+t=  83.0s birds=100000 |N|=7.28 R= 0.66m cluster= 98.3% spread= 11.5m Rh=115.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 40.8m Rmax= 18.13m wide= 0.0%
+t=  84.0s birds=100000 |N|=7.35 R= 0.63m cluster= 98.3% spread= 10.7m Rh=105.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 38.6m Rmax= 13.59m wide= 0.0%
+t=  85.0s birds=100000 |N|=7.33 R= 0.61m cluster= 98.3% spread= 10.2m Rh=100.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 38.8m Rmax=  8.40m wide= 0.0%
+t=  86.0s birds=100000 |N|=7.25 R= 0.58m cluster= 98.4% spread= 10.0m Rh=109.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 41.4m Rmax=  7.32m wide= 0.0%
+t=  87.0s birds=100000 |N|=6.95 R= 0.57m cluster= 98.4% spread= 10.1m Rh=118.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 45.9m Rmax=  6.50m wide= 0.0%
+t=  88.0s birds=100000 |N|=6.63 R= 0.57m cluster= 98.4% spread= 10.5m Rh=128.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 51.9m Rmax=  7.29m wide= 0.0%
+t=  89.0s birds=100000 |N|=6.38 R= 0.59m cluster= 98.4% spread= 11.0m Rh=137.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 59.0m Rmax=  9.97m wide= 0.0%
+t=  90.0s birds=100000 |N|=6.23 R= 0.62m cluster= 98.4% spread= 11.8m Rh=147.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 66.7m Rmax= 12.46m wide= 0.0%
+t=  91.0s birds=100000 |N|=6.15 R= 0.65m cluster= 98.4% spread= 12.7m Rh=156.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 74.9m Rmax= 14.17m wide= 0.0%
+t=  92.0s birds=100000 |N|=6.15 R= 0.69m cluster= 98.4% spread= 13.8m Rh=164.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 83.4m Rmax= 16.31m wide= 0.0%
+t=  93.0s birds=100000 |N|=6.15 R= 0.73m cluster= 98.4% spread= 15.0m Rh=171.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 92.1m Rmax= 16.68m wide= 0.0%
+t=  94.0s birds=100000 |N|=6.16 R= 0.76m cluster= 98.4% spread= 16.4m Rh=176.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=101.0m Rmax= 15.92m wide= 0.0%
+t=  95.0s birds=100000 |N|=6.20 R= 0.80m cluster= 98.4% spread= 17.8m Rh=178.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=110.1m Rmax= 13.61m wide= 0.0%
+t=  96.0s birds=100000 |N|=6.23 R= 0.83m cluster= 98.5% spread= 19.4m Rh=177.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=119.2m Rmax= 13.04m wide= 0.0%
+t=  97.0s birds=100000 |N|=6.27 R= 0.86m cluster= 98.5% spread= 21.1m Rh=174.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=128.4m Rmax= 10.79m wide= 0.0%
+t=  98.0s birds=100000 |N|=6.35 R= 0.89m cluster= 98.5% spread= 22.6m Rh=172.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=137.6m Rmax=  9.18m wide= 0.0%
+t=  99.0s birds=100000 |N|=6.52 R= 0.91m cluster= 98.5% spread= 23.6m Rh=177.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=146.7m Rmax=  7.84m wide= 0.0%
+t= 100.0s birds=100000 |N|=6.79 R= 0.91m cluster= 98.8% spread= 24.0m Rh=185.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=155.1m Rmax= 10.66m wide= 0.0%
+t= 101.0s birds=100000 |N|=7.08 R= 0.89m cluster= 98.8% spread= 23.9m Rh=190.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=162.1m Rmax= 10.41m wide= 0.0%
+t= 102.0s birds=100000 |N|=7.44 R= 0.85m cluster= 98.8% spread= 23.7m Rh=196.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=167.1m Rmax=  9.08m wide= 0.0%
+t= 103.0s birds=100000 |N|=7.30 R= 0.81m cluster= 98.8% spread= 23.3m Rh=203.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=169.8m Rmax=  9.21m wide= 0.0%
+t= 104.0s birds=100000 |N|=6.76 R= 0.80m cluster= 98.7% spread= 23.0m Rh=206.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=170.0m Rmax=  6.82m wide= 0.0%
+t= 105.0s birds=100000 |N|=6.51 R= 0.81m cluster= 99.8% spread= 22.8m Rh=208.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=167.7m Rmax=  9.85m wide= 0.0%
+t= 106.0s birds=100000 |N|=6.23 R= 0.85m cluster= 99.7% spread= 22.8m Rh=205.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=163.1m Rmax= 24.20m wide= 0.0%
+t= 107.0s birds=100000 |N|=6.27 R= 0.89m cluster= 99.7% spread= 23.0m Rh=200.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=156.5m Rmax= 27.58m wide= 0.0%
+t= 108.0s birds=100000 |N|=6.48 R= 0.91m cluster= 99.5% spread= 23.0m Rh=199.9m dz= 3.9m clamp= 0.0% v= 9.9m/s hstd= 4.8m rc=148.5m Rmax= 25.33m wide= 0.0%
+t= 109.0s birds=100000 |N|=6.64 R= 0.92m cluster= 99.5% spread= 22.5m Rh=203.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=139.6m Rmax= 22.32m wide= 0.0%
+t= 110.0s birds=100000 |N|=6.79 R= 0.92m cluster= 99.4% spread= 21.5m Rh=204.1m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=130.4m Rmax= 18.84m wide= 0.0%
+t= 111.0s birds=100000 |N|=6.86 R= 0.90m cluster= 99.3% spread= 20.4m Rh=195.5m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=121.1m Rmax= 14.57m wide= 0.0%
+t= 112.0s birds=100000 |N|=6.87 R= 0.88m cluster= 99.6% spread= 19.3m Rh=190.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=111.9m Rmax= 19.82m wide= 0.0%
+t= 113.0s birds=100000 |N|=6.86 R= 0.86m cluster= 99.7% spread= 18.3m Rh=183.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=102.8m Rmax= 26.40m wide= 0.0%
+t= 114.0s birds=100000 |N|=6.86 R= 0.84m cluster= 98.3% spread= 17.4m Rh=177.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 93.8m Rmax= 19.65m wide= 0.0%
+t= 115.0s birds=100000 |N|=6.85 R= 0.82m cluster= 98.3% spread= 16.6m Rh=174.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 84.9m Rmax= 16.54m wide= 0.0%
+t= 116.0s birds=100000 |N|=6.86 R= 0.81m cluster= 98.3% spread= 15.9m Rh=167.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 76.2m Rmax= 18.58m wide= 0.0%
+t= 117.0s birds=100000 |N|=6.86 R= 0.79m cluster= 98.3% spread= 15.3m Rh=160.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 67.9m Rmax= 16.02m wide= 0.0%
+t= 118.0s birds=100000 |N|=6.88 R= 0.77m cluster= 98.3% spread= 14.8m Rh=150.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 60.0m Rmax= 11.53m wide= 0.0%
+t= 119.0s birds=100000 |N|=6.90 R= 0.76m cluster= 98.3% spread= 14.5m Rh=141.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.7m Rmax= 10.10m wide= 0.0%
+t= 120.0s birds=100000 |N|=6.89 R= 0.74m cluster= 98.3% spread= 14.3m Rh=131.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.4m Rmax=  9.40m wide= 0.0%
+t= 121.0s birds=100000 |N|=6.80 R= 0.73m cluster= 98.3% spread= 14.2m Rh=121.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.5m Rmax=  7.55m wide= 0.0%
+t= 122.0s birds=100000 |N|=6.69 R= 0.73m cluster= 98.3% spread= 14.2m Rh=112.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 38.5m Rmax=  8.40m wide= 0.0%
+t= 123.0s birds=100000 |N|=6.61 R= 0.74m cluster= 98.3% spread= 14.3m Rh=103.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 38.0m Rmax= 10.38m wide= 0.0%
+t= 124.0s birds=100000 |N|=6.57 R= 0.75m cluster= 98.3% spread= 14.6m Rh=103.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.9m Rmax=  8.44m wide= 0.0%
+t= 125.0s birds=100000 |N|=6.52 R= 0.76m cluster= 98.3% spread= 15.0m Rh=113.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 44.0m Rmax=  7.95m wide= 0.0%
+t= 126.0s birds=100000 |N|=6.48 R= 0.77m cluster= 98.3% spread= 15.4m Rh=122.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 49.8m Rmax=  8.59m wide= 0.0%
+t= 127.0s birds=100000 |N|=6.44 R= 0.79m cluster= 98.3% spread= 16.0m Rh=132.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 56.7m Rmax=  7.51m wide= 0.0%
+t= 128.0s birds=100000 |N|=6.41 R= 0.81m cluster= 98.3% spread= 16.7m Rh=141.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 64.4m Rmax=  5.46m wide= 0.0%
+t= 129.0s birds=100000 |N|=6.41 R= 0.83m cluster= 98.3% spread= 17.5m Rh=151.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 72.6m Rmax=  5.28m wide= 0.0%
+t= 130.0s birds=100000 |N|=6.39 R= 0.86m cluster= 98.4% spread= 18.4m Rh=160.4m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 81.2m Rmax=  4.98m wide= 0.0%
+t= 131.0s birds=100000 |N|=6.38 R= 0.88m cluster= 98.3% spread= 19.3m Rh=168.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 90.0m Rmax=  3.83m wide= 0.0%
+t= 132.0s birds=100000 |N|=6.38 R= 0.90m cluster= 98.3% spread= 20.3m Rh=174.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 99.0m Rmax=  3.85m wide= 0.0%
+t= 133.0s birds=100000 |N|=6.39 R= 0.93m cluster= 98.3% spread= 21.4m Rh=177.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=108.2m Rmax=  4.06m wide= 0.0%
+t= 134.0s birds=100000 |N|=6.38 R= 0.95m cluster= 98.4% spread= 22.6m Rh=178.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=117.4m Rmax=  3.51m wide= 0.0%
+t= 135.0s birds=100000 |N|=6.39 R= 0.97m cluster= 98.4% spread= 23.9m Rh=176.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=126.7m Rmax=  3.56m wide= 0.0%
+t= 136.0s birds=100000 |N|=6.44 R= 0.99m cluster= 98.4% spread= 25.0m Rh=172.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=136.1m Rmax=  3.27m wide= 0.0%
+t= 137.0s birds=100000 |N|=6.62 R= 1.00m cluster= 98.4% spread= 25.8m Rh=171.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=145.3m Rmax=  3.68m wide= 0.0%
+t= 138.0s birds=100000 |N|=6.83 R= 0.99m cluster= 98.4% spread= 26.0m Rh=177.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=153.6m Rmax=  3.70m wide= 0.0%
+t= 139.0s birds=100000 |N|=7.00 R= 0.96m cluster= 98.4% spread= 26.0m Rh=181.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=160.5m Rmax=  4.46m wide= 0.0%
+t= 140.0s birds=100000 |N|=7.13 R= 0.93m cluster= 98.4% spread= 25.9m Rh=183.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=165.3m Rmax=  3.90m wide= 0.0%
+t= 141.0s birds=100000 |N|=7.22 R= 0.88m cluster= 98.4% spread= 25.7m Rh=182.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=167.7m Rmax=  4.06m wide= 0.0%
+t= 142.0s birds=100000 |N|=7.12 R= 0.84m cluster= 98.4% spread= 25.3m Rh=181.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=167.7m Rmax=  4.92m wide= 0.0%
+t= 143.0s birds=100000 |N|=6.89 R= 0.82m cluster= 98.6% spread= 24.8m Rh=180.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=165.1m Rmax=  9.54m wide= 0.0%
+t= 144.0s birds=100000 |N|=6.64 R= 0.82m cluster= 98.6% spread= 24.2m Rh=181.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=160.3m Rmax= 11.71m wide= 0.0%
+t= 145.0s birds=100000 |N|=6.51 R= 0.83m cluster= 98.5% spread= 23.7m Rh=189.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=153.4m Rmax= 19.03m wide= 0.0%
+t= 146.0s birds=100000 |N|=6.61 R= 0.85m cluster= 98.5% spread= 23.1m Rh=193.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=145.1m Rmax= 19.59m wide= 0.0%
+t= 147.0s birds=100000 |N|=6.77 R= 0.85m cluster= 99.5% spread= 22.1m Rh=197.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=136.1m Rmax= 19.56m wide= 0.0%
+t= 148.0s birds=100000 |N|=6.87 R= 0.83m cluster= 99.6% spread= 20.8m Rh=194.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=126.9m Rmax= 19.98m wide= 0.0%
+t= 149.0s birds=100000 |N|=6.87 R= 0.81m cluster= 99.5% spread= 19.5m Rh=188.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=117.7m Rmax= 22.29m wide= 0.0%
+t= 150.0s birds=100000 |N|=6.86 R= 0.80m cluster= 99.5% spread= 18.3m Rh=181.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=108.5m Rmax= 34.84m wide= 0.0%
+t= 151.0s birds=100000 |N|=6.87 R= 0.78m cluster= 99.5% spread= 17.2m Rh=186.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 99.5m Rmax= 47.71m wide= 0.0%
+t= 152.0s birds=100000 |N|=6.87 R= 0.76m cluster= 99.5% spread= 16.2m Rh=188.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 90.5m Rmax= 55.89m wide= 0.0%
+t= 153.0s birds=100000 |N|=6.89 R= 0.75m cluster= 98.3% spread= 15.3m Rh=182.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 81.7m Rmax= 51.52m wide= 0.0%
+t= 154.0s birds=100000 |N|=6.87 R= 0.73m cluster= 98.3% spread= 14.5m Rh=174.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 73.1m Rmax= 49.27m wide= 0.0%
+t= 155.0s birds=100000 |N|=6.87 R= 0.72m cluster= 98.3% spread= 13.9m Rh=166.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 64.9m Rmax= 45.87m wide= 0.0%
+t= 156.0s birds=100000 |N|=6.85 R= 0.70m cluster= 98.3% spread= 13.3m Rh=157.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 57.3m Rmax= 41.40m wide= 0.0%
+t= 157.0s birds=100000 |N|=6.83 R= 0.70m cluster= 98.3% spread= 12.9m Rh=148.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 50.4m Rmax= 37.54m wide= 0.0%
+t= 158.0s birds=100000 |N|=6.81 R= 0.69m cluster= 98.3% spread= 12.7m Rh=138.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 44.6m Rmax= 33.32m wide= 0.0%
+t= 159.0s birds=100000 |N|=6.77 R= 0.68m cluster= 98.3% spread= 12.5m Rh=128.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 40.4m Rmax= 30.12m wide= 0.0%
+t= 160.0s birds=100000 |N|=6.73 R= 0.68m cluster= 98.3% spread= 12.5m Rh=118.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 38.4m Rmax= 26.83m wide= 0.0%
+t= 161.0s birds=100000 |N|=6.69 R= 0.69m cluster= 98.3% spread= 12.7m Rh=109.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 38.9m Rmax= 24.05m wide= 0.0%
+t= 162.0s birds=100000 |N|=6.61 R= 0.69m cluster= 98.3% spread= 13.0m Rh=100.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 41.8m Rmax= 21.33m wide= 0.0%
+t= 163.0s birds=100000 |N|=6.54 R= 0.71m cluster= 98.3% spread= 13.4m Rh=102.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 46.6m Rmax= 18.97m wide= 0.0%
+t= 164.0s birds=100000 |N|=6.49 R= 0.72m cluster= 98.3% spread= 14.0m Rh=111.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 52.9m Rmax= 16.36m wide= 0.0%
+t= 165.0s birds=100000 |N|=6.44 R= 0.74m cluster= 98.3% spread= 14.7m Rh=120.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 60.1m Rmax= 13.62m wide= 0.0%
+t= 166.0s birds=100000 |N|=6.41 R= 0.76m cluster= 98.3% spread= 15.5m Rh=130.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 68.0m Rmax= 10.74m wide= 0.0%
+t= 167.0s birds=100000 |N|=6.39 R= 0.78m cluster= 98.3% spread= 16.4m Rh=139.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 76.3m Rmax=  8.58m wide= 0.0%
+t= 168.0s birds=100000 |N|=6.37 R= 0.80m cluster= 98.3% spread= 17.4m Rh=149.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 85.0m Rmax=  6.39m wide= 0.0%
+t= 169.0s birds=100000 |N|=6.37 R= 0.82m cluster= 98.3% spread= 18.5m Rh=158.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 93.9m Rmax=  4.54m wide= 0.0%
+t= 170.0s birds=100000 |N|=6.36 R= 0.84m cluster= 98.3% spread= 19.6m Rh=166.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=102.9m Rmax=  3.94m wide= 0.0%
+t= 171.0s birds=100000 |N|=6.37 R= 0.87m cluster= 98.3% spread= 20.9m Rh=172.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=112.1m Rmax=  3.87m wide= 0.0%
+t= 172.0s birds=100000 |N|=6.38 R= 0.89m cluster= 98.3% spread= 22.2m Rh=177.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=121.3m Rmax=  3.79m wide= 0.0%
+t= 173.0s birds=100000 |N|=6.39 R= 0.91m cluster= 98.3% spread= 23.6m Rh=178.4m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=130.6m Rmax=  4.27m wide= 0.0%
+t= 174.0s birds=100000 |N|=6.47 R= 0.93m cluster= 98.3% spread= 24.9m Rh=177.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=140.0m Rmax=  3.76m wide= 0.0%
+t= 175.0s birds=100000 |N|=6.67 R= 0.93m cluster= 98.3% spread= 25.6m Rh=173.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=149.0m Rmax=  4.45m wide= 0.0%
+t= 176.0s birds=100000 |N|=6.89 R= 0.92m cluster= 98.3% spread= 25.9m Rh=177.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=157.0m Rmax=  4.01m wide= 0.0%
+t= 177.0s birds=100000 |N|=7.03 R= 0.89m cluster= 98.3% spread= 26.0m Rh=180.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=163.4m Rmax=  2.98m wide= 0.0%
+t= 178.0s birds=100000 |N|=7.01 R= 0.87m cluster= 98.3% spread= 26.0m Rh=183.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=167.6m Rmax=  3.98m wide= 0.0%
+t= 179.0s birds=100000 |N|=6.83 R= 0.85m cluster= 98.3% spread= 25.8m Rh=183.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=169.4m Rmax=  3.19m wide= 0.0%
+t= 180.0s birds=100000 |N|=6.72 R= 0.84m cluster= 98.3% spread= 25.6m Rh=188.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=168.7m Rmax=  4.56m wide= 0.0%
+t= 181.0s birds=100000 |N|=6.62 R= 0.84m cluster= 98.3% spread= 25.3m Rh=195.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=165.4m Rmax= 10.00m wide= 0.0%
+t= 182.0s birds=100000 |N|=6.51 R= 0.86m cluster= 98.4% spread= 24.9m Rh=199.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=160.0m Rmax= 21.93m wide= 0.0%
+t= 183.0s birds=100000 |N|=6.51 R= 0.87m cluster= 98.6% spread= 24.5m Rh=197.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=152.8m Rmax= 28.05m wide= 0.0%
+t= 184.0s birds=100000 |N|=6.58 R= 0.88m cluster= 98.6% spread= 23.9m Rh=187.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=144.3m Rmax= 27.09m wide= 0.0%
+t= 185.0s birds=100000 |N|=6.77 R= 0.88m cluster= 98.4% spread= 22.7m Rh=181.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=135.2m Rmax= 24.67m wide= 0.0%
+t= 186.0s birds=100000 |N|=6.86 R= 0.86m cluster= 98.4% spread= 21.4m Rh=179.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=126.1m Rmax= 23.99m wide= 0.0%
+t= 187.0s birds=100000 |N|=6.86 R= 0.84m cluster= 98.4% spread= 20.1m Rh=179.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=117.0m Rmax= 23.26m wide= 0.0%
+t= 188.0s birds=100000 |N|=6.84 R= 0.83m cluster= 98.4% spread= 18.9m Rh=180.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=107.8m Rmax= 22.19m wide= 0.0%
+t= 189.0s birds=100000 |N|=6.83 R= 0.81m cluster= 98.4% spread= 17.8m Rh=180.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 98.8m Rmax= 21.27m wide= 0.0%
+t= 190.0s birds=100000 |N|=6.81 R= 0.80m cluster= 98.3% spread= 16.8m Rh=180.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 89.9m Rmax= 19.97m wide= 0.0%
+t= 191.0s birds=100000 |N|=6.81 R= 0.79m cluster= 98.3% spread= 15.9m Rh=177.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 81.1m Rmax= 18.29m wide= 0.0%
+t= 192.0s birds=100000 |N|=6.79 R= 0.78m cluster= 98.3% spread= 15.2m Rh=173.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 72.6m Rmax= 16.65m wide= 0.0%
+t= 193.0s birds=100000 |N|=6.80 R= 0.77m cluster= 98.3% spread= 14.6m Rh=166.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 64.5m Rmax= 14.89m wide= 0.0%
+t= 194.0s birds=100000 |N|=6.82 R= 0.76m cluster= 98.3% spread= 14.1m Rh=158.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 56.9m Rmax= 12.94m wide= 0.0%
+t= 195.0s birds=100000 |N|=6.83 R= 0.75m cluster= 98.4% spread= 13.8m Rh=148.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 50.0m Rmax= 10.30m wide= 0.0%
+t= 196.0s birds=100000 |N|=6.81 R= 0.75m cluster= 98.3% spread= 13.6m Rh=139.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 44.3m Rmax=  7.48m wide= 0.0%
+t= 197.0s birds=100000 |N|=6.72 R= 0.75m cluster= 98.3% spread= 13.6m Rh=129.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 40.3m Rmax=  5.26m wide= 0.0%
+t= 198.0s birds=100000 |N|=6.64 R= 0.75m cluster= 98.3% spread= 13.8m Rh=120.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 38.3m Rmax=  3.56m wide= 0.0%
+t= 199.0s birds=100000 |N|=6.56 R= 0.76m cluster= 98.3% spread= 14.1m Rh=110.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 38.9m Rmax=  3.07m wide= 0.0%
+t= 200.0s birds=100000 |N|=6.49 R= 0.78m cluster= 98.3% spread= 14.5m Rh=101.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 41.8m Rmax=  3.46m wide= 0.0%
+t= 201.0s birds=100000 |N|=6.45 R= 0.79m cluster= 98.3% spread= 15.1m Rh= 95.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 46.7m Rmax=  3.61m wide= 0.0%
+t= 202.0s birds=100000 |N|=6.43 R= 0.81m cluster= 98.3% spread= 15.8m Rh=104.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 53.0m Rmax=  3.24m wide= 0.0%
+t= 203.0s birds=100000 |N|=6.41 R= 0.83m cluster= 98.3% spread= 16.6m Rh=114.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 60.2m Rmax=  3.25m wide= 0.0%
+t= 204.0s birds=100000 |N|=6.41 R= 0.85m cluster= 98.3% spread= 17.6m Rh=123.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 68.1m Rmax=  2.94m wide= 0.0%
+t= 205.0s birds=100000 |N|=6.39 R= 0.88m cluster= 98.3% spread= 18.6m Rh=133.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 76.4m Rmax=  2.91m wide= 0.0%
+t= 206.0s birds=100000 |N|=6.39 R= 0.90m cluster= 98.3% spread= 19.7m Rh=142.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 85.0m Rmax=  3.26m wide= 0.0%
+t= 207.0s birds=100000 |N|=6.39 R= 0.92m cluster= 98.3% spread= 21.0m Rh=152.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 93.8m Rmax=  3.53m wide= 0.0%
+t= 208.0s birds=100000 |N|=6.39 R= 0.94m cluster= 98.3% spread= 22.3m Rh=161.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=102.8m Rmax=  3.40m wide= 0.0%
+t= 209.0s birds=100000 |N|=6.40 R= 0.96m cluster= 98.3% spread= 23.6m Rh=168.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=111.9m Rmax=  3.08m wide= 0.0%
+t= 210.0s birds=100000 |N|=6.39 R= 0.99m cluster= 98.3% spread= 25.1m Rh=174.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=121.1m Rmax=  2.79m wide= 0.0%
+t= 211.0s birds=100000 |N|=6.44 R= 1.01m cluster= 98.3% spread= 26.5m Rh=177.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=130.4m Rmax=  2.97m wide= 0.0%
+t= 212.0s birds=100000 |N|=6.55 R= 1.02m cluster= 98.3% spread= 27.7m Rh=178.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=139.6m Rmax=  2.83m wide= 0.0%
+t= 213.0s birds=100000 |N|=6.77 R= 1.02m cluster= 98.3% spread= 28.3m Rh=175.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=148.3m Rmax=  3.22m wide= 0.0%
+t= 214.0s birds=100000 |N|=6.97 R= 0.99m cluster= 98.3% spread= 28.6m Rh=177.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=155.7m Rmax=  2.84m wide= 0.0%
+t= 215.0s birds=100000 |N|=7.14 R= 0.96m cluster= 98.3% spread= 28.7m Rh=180.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=161.3m Rmax=  2.87m wide= 0.0%
+t= 216.0s birds=100000 |N|=7.08 R= 0.92m cluster= 98.3% spread= 28.6m Rh=182.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=164.7m Rmax=  3.43m wide= 0.0%
+t= 217.0s birds=100000 |N|=6.92 R= 0.89m cluster= 98.4% spread= 28.5m Rh=182.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=165.6m Rmax=  2.76m wide= 0.0%
+t= 218.0s birds=100000 |N|=6.80 R= 0.87m cluster= 98.4% spread= 28.2m Rh=180.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=164.0m Rmax=  2.57m wide= 0.0%
+t= 219.0s birds=100000 |N|=6.71 R= 0.87m cluster= 98.4% spread= 27.8m Rh=179.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=160.2m Rmax=  4.24m wide= 0.0%
+t= 220.0s birds=100000 |N|=6.61 R= 0.87m cluster= 98.4% spread= 27.4m Rh=179.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=154.2m Rmax=  2.83m wide= 0.0%
+t= 221.0s birds=100000 |N|=6.59 R= 0.88m cluster= 98.4% spread= 26.9m Rh=182.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=146.6m Rmax=  2.44m wide= 0.0%
+t= 222.0s birds=100000 |N|=6.69 R= 0.88m cluster= 98.4% spread= 25.9m Rh=182.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=137.9m Rmax=  3.64m wide= 0.0%
+t= 223.0s birds=100000 |N|=6.83 R= 0.87m cluster= 98.4% spread= 24.4m Rh=180.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=128.9m Rmax=  3.69m wide= 0.0%
+t= 224.0s birds=100000 |N|=6.87 R= 0.85m cluster= 98.4% spread= 22.8m Rh=180.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=119.9m Rmax=  2.73m wide= 0.0%
+t= 225.0s birds=100000 |N|=6.87 R= 0.83m cluster= 98.4% spread= 21.3m Rh=177.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=110.9m Rmax=  3.05m wide= 0.0%
+t= 226.0s birds=100000 |N|=6.86 R= 0.81m cluster= 98.4% spread= 19.8m Rh=178.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=101.9m Rmax=  4.27m wide= 0.0%
+t= 227.0s birds=100000 |N|=6.85 R= 0.80m cluster= 98.4% spread= 18.5m Rh=179.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 93.0m Rmax=  3.85m wide= 0.0%
+t= 228.0s birds=100000 |N|=6.85 R= 0.78m cluster= 98.4% spread= 17.2m Rh=179.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 84.3m Rmax=  2.89m wide= 0.0%
+t= 229.0s birds=100000 |N|=6.84 R= 0.77m cluster= 98.4% spread= 16.1m Rh=179.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 75.7m Rmax=  2.37m wide= 0.0%
+t= 230.0s birds=100000 |N|=6.84 R= 0.76m cluster= 98.4% spread= 15.1m Rh=177.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 67.5m Rmax=  2.81m wide= 0.0%
+t= 231.0s birds=100000 |N|=6.84 R= 0.75m cluster= 98.4% spread= 14.3m Rh=173.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 59.7m Rmax=  2.90m wide= 0.0%
+t= 232.0s birds=100000 |N|=6.84 R= 0.74m cluster= 98.4% spread= 13.7m Rh=166.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.6m Rmax=  2.85m wide= 0.0%
+t= 233.0s birds=100000 |N|=6.85 R= 0.74m cluster= 98.4% spread= 13.2m Rh=158.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.4m Rmax=  2.96m wide= 0.0%
+t= 234.0s birds=100000 |N|=6.86 R= 0.73m cluster= 98.4% spread= 12.9m Rh=148.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.6m Rmax=  2.64m wide= 0.0%
+t= 235.0s birds=100000 |N|=6.79 R= 0.73m cluster= 98.4% spread= 12.9m Rh=139.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 38.8m Rmax=  2.91m wide= 0.0%
+t= 236.0s birds=100000 |N|=6.70 R= 0.74m cluster= 98.4% spread= 13.1m Rh=129.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 38.4m Rmax=  2.93m wide= 0.0%
+t= 237.0s birds=100000 |N|=6.61 R= 0.74m cluster= 98.4% spread= 13.4m Rh=119.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 40.4m Rmax=  3.01m wide= 0.0%
+t= 238.0s birds=100000 |N|=6.51 R= 0.76m cluster= 98.4% spread= 14.0m Rh=110.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 44.5m Rmax=  2.68m wide= 0.0%
+t= 239.0s birds=100000 |N|=6.45 R= 0.77m cluster= 98.4% spread= 14.6m Rh=101.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 50.2m Rmax=  2.75m wide= 0.0%
+t= 240.0s birds=100000 |N|=6.40 R= 0.79m cluster= 98.4% spread= 15.4m Rh= 99.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 57.1m Rmax=  2.58m wide= 0.0%
+t= 241.0s birds=100000 |N|=6.38 R= 0.81m cluster= 98.4% spread= 16.4m Rh=108.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 64.7m Rmax=  2.77m wide= 0.0%
+t= 242.0s birds=100000 |N|=6.37 R= 0.83m cluster= 98.4% spread= 17.4m Rh=118.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 72.8m Rmax=  2.95m wide= 0.0%
+t= 243.0s birds=100000 |N|=6.38 R= 0.86m cluster= 98.4% spread= 18.6m Rh=127.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 81.2m Rmax=  3.26m wide= 0.0%
+t= 244.0s birds=100000 |N|=6.38 R= 0.88m cluster= 98.4% spread= 19.8m Rh=137.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 90.0m Rmax=  3.04m wide= 0.0%
+t= 245.0s birds=100000 |N|=6.39 R= 0.90m cluster= 98.4% spread= 21.2m Rh=146.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 98.9m Rmax=  3.23m wide= 0.0%
+t= 246.0s birds=100000 |N|=6.38 R= 0.92m cluster= 98.4% spread= 22.6m Rh=156.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=107.9m Rmax=  3.45m wide= 0.0%
+t= 247.0s birds=100000 |N|=6.39 R= 0.95m cluster= 98.4% spread= 24.1m Rh=164.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=117.0m Rmax=  3.75m wide= 0.0%
+t= 248.0s birds=100000 |N|=6.41 R= 0.97m cluster= 98.4% spread= 25.7m Rh=171.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=126.2m Rmax=  3.36m wide= 0.0%
+t= 249.0s birds=100000 |N|=6.46 R= 0.99m cluster= 98.4% spread= 27.1m Rh=176.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=135.4m Rmax=  2.87m wide= 0.0%
+t= 250.0s birds=100000 |N|=6.64 R= 0.99m cluster= 98.4% spread= 28.1m Rh=178.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=144.5m Rmax=  2.72m wide= 0.0%
+t= 251.0s birds=100000 |N|=6.89 R= 0.98m cluster= 98.4% spread= 28.6m Rh=177.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=152.8m Rmax=  2.59m wide= 0.0%
+t= 252.0s birds=100000 |N|=7.12 R= 0.95m cluster= 98.4% spread= 28.8m Rh=178.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=159.6m Rmax=  2.79m wide= 0.0%
+t= 253.0s birds=100000 |N|=7.05 R= 0.91m cluster= 98.4% spread= 28.9m Rh=182.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=164.3m Rmax=  2.62m wide= 0.0%
+t= 254.0s birds=100000 |N|=6.82 R= 0.90m cluster= 98.4% spread= 28.9m Rh=183.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=166.7m Rmax=  2.65m wide= 0.0%
+t= 255.0s birds=100000 |N|=6.72 R= 0.89m cluster= 98.4% spread= 28.8m Rh=183.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=166.6m Rmax=  2.81m wide= 0.0%
+t= 256.0s birds=100000 |N|=6.67 R= 0.88m cluster= 98.4% spread= 28.6m Rh=182.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=163.9m Rmax=  3.69m wide= 0.0%
+t= 257.0s birds=100000 |N|=6.61 R= 0.89m cluster= 98.4% spread= 28.3m Rh=178.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=159.1m Rmax=  2.82m wide= 0.0%
+t= 258.0s birds=100000 |N|=6.57 R= 0.89m cluster= 98.4% spread= 28.0m Rh=177.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=152.3m Rmax=  2.70m wide= 0.0%
+t= 259.0s birds=100000 |N|=6.61 R= 0.90m cluster= 98.4% spread= 27.4m Rh=179.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=144.1m Rmax=  3.04m wide= 0.0%
+t= 260.0s birds=100000 |N|=6.75 R= 0.90m cluster= 98.4% spread= 26.1m Rh=179.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=135.2m Rmax=  2.95m wide= 0.0%
+t= 261.0s birds=100000 |N|=6.85 R= 0.88m cluster= 98.4% spread= 24.5m Rh=180.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=126.2m Rmax=  2.82m wide= 0.0%
+t= 262.0s birds=100000 |N|=6.86 R= 0.86m cluster= 98.4% spread= 22.9m Rh=181.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=117.2m Rmax=  2.50m wide= 0.0%
+t= 263.0s birds=100000 |N|=6.85 R= 0.84m cluster= 98.4% spread= 21.4m Rh=178.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=108.3m Rmax=  2.59m wide= 0.0%
+t= 264.0s birds=100000 |N|=6.85 R= 0.83m cluster= 98.4% spread= 19.9m Rh=176.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 99.4m Rmax=  2.53m wide= 0.0%
+t= 265.0s birds=100000 |N|=6.83 R= 0.81m cluster= 98.4% spread= 18.6m Rh=179.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 90.6m Rmax=  2.59m wide= 0.0%
+t= 266.0s birds=100000 |N|=6.82 R= 0.80m cluster= 98.4% spread= 17.3m Rh=180.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 82.0m Rmax=  2.48m wide= 0.0%
+t= 267.0s birds=100000 |N|=6.83 R= 0.79m cluster= 98.4% spread= 16.2m Rh=180.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 73.6m Rmax=  2.71m wide= 0.0%
+t= 268.0s birds=100000 |N|=6.82 R= 0.78m cluster= 98.4% spread= 15.2m Rh=181.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 65.6m Rmax=  2.63m wide= 0.0%
+t= 269.0s birds=100000 |N|=6.83 R= 0.77m cluster= 98.4% spread= 14.4m Rh=179.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 58.0m Rmax=  2.49m wide= 0.0%
+t= 270.0s birds=100000 |N|=6.86 R= 0.76m cluster= 98.4% spread= 13.7m Rh=173.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 51.2m Rmax=  2.52m wide= 0.0%
+t= 271.0s birds=100000 |N|=6.90 R= 0.76m cluster= 98.4% spread= 13.3m Rh=166.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 45.4m Rmax=  2.57m wide= 0.0%
+t= 272.0s birds=100000 |N|=6.87 R= 0.75m cluster= 98.4% spread= 13.1m Rh=158.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.2m Rmax=  2.63m wide= 0.0%
+t= 273.0s birds=100000 |N|=6.79 R= 0.75m cluster= 98.4% spread= 13.1m Rh=148.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.0m Rmax=  2.65m wide= 0.0%
+t= 274.0s birds=100000 |N|=6.68 R= 0.75m cluster= 98.4% spread= 13.3m Rh=138.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.2m Rmax=  2.40m wide= 0.0%
+t= 275.0s birds=100000 |N|=6.56 R= 0.76m cluster= 98.4% spread= 13.7m Rh=129.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.8m Rmax=  2.67m wide= 0.0%
+t= 276.0s birds=100000 |N|=6.48 R= 0.78m cluster= 98.4% spread= 14.2m Rh=119.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.3m Rmax=  2.88m wide= 0.0%
+t= 277.0s birds=100000 |N|=6.43 R= 0.80m cluster= 98.4% spread= 14.9m Rh=110.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.3m Rmax=  2.82m wide= 0.0%
+t= 278.0s birds=100000 |N|=6.40 R= 0.81m cluster= 98.4% spread= 15.8m Rh=101.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 59.3m Rmax=  2.89m wide= 0.0%
+t= 279.0s birds=100000 |N|=6.39 R= 0.84m cluster= 98.4% spread= 16.7m Rh=104.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 67.0m Rmax=  2.90m wide= 0.0%
+t= 280.0s birds=100000 |N|=6.39 R= 0.86m cluster= 98.4% spread= 17.8m Rh=113.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 75.1m Rmax=  2.66m wide= 0.0%
+t= 281.0s birds=100000 |N|=6.38 R= 0.88m cluster= 98.4% spread= 19.0m Rh=122.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 83.6m Rmax=  3.18m wide= 0.0%
+t= 282.0s birds=100000 |N|=6.38 R= 0.90m cluster= 98.4% spread= 20.2m Rh=132.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 92.3m Rmax=  3.44m wide= 0.0%
+t= 283.0s birds=100000 |N|=6.39 R= 0.93m cluster= 98.4% spread= 21.6m Rh=141.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=101.2m Rmax=  2.73m wide= 0.0%
+t= 284.0s birds=100000 |N|=6.39 R= 0.95m cluster= 98.4% spread= 23.0m Rh=151.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=110.2m Rmax=  2.94m wide= 0.0%
+t= 285.0s birds=100000 |N|=6.41 R= 0.97m cluster= 98.4% spread= 24.5m Rh=160.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=119.3m Rmax=  2.99m wide= 0.0%
+t= 286.0s birds=100000 |N|=6.43 R= 0.99m cluster= 98.4% spread= 26.0m Rh=168.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=128.5m Rmax=  2.63m wide= 0.0%
+t= 287.0s birds=100000 |N|=6.51 R= 1.01m cluster= 98.4% spread= 27.4m Rh=174.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=137.7m Rmax=  2.90m wide= 0.0%
+t= 288.0s birds=100000 |N|=6.73 R= 1.00m cluster= 98.4% spread= 28.2m Rh=177.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=146.5m Rmax=  2.95m wide= 0.0%
+t= 289.0s birds=100000 |N|=6.97 R= 0.98m cluster= 98.4% spread= 28.6m Rh=178.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=154.3m Rmax=  3.23m wide= 0.0%
+t= 290.0s birds=100000 |N|=7.12 R= 0.95m cluster= 98.4% spread= 28.9m Rh=180.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=160.3m Rmax=  2.91m wide= 0.0%
+t= 291.0s birds=100000 |N|=7.01 R= 0.92m cluster= 98.4% spread= 29.0m Rh=183.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=164.2m Rmax=  2.92m wide= 0.0%
+t= 292.0s birds=100000 |N|=6.94 R= 0.89m cluster= 98.4% spread= 29.0m Rh=183.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=165.6m Rmax=  3.05m wide= 0.0%
+t= 293.0s birds=100000 |N|=6.86 R= 0.87m cluster= 98.4% spread= 28.8m Rh=183.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=164.6m Rmax=  5.56m wide= 0.0%
+t= 294.0s birds=100000 |N|=6.74 R= 0.86m cluster= 98.4% spread= 28.6m Rh=188.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=161.1m Rmax=  9.34m wide= 0.0%
+t= 295.0s birds=100000 |N|=6.62 R= 0.86m cluster= 98.4% spread= 28.3m Rh=187.8m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=155.5m Rmax= 10.59m wide= 0.0%
+t= 296.0s birds=100000 |N|=6.56 R= 0.87m cluster= 98.4% spread= 27.9m Rh=185.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=148.1m Rmax= 12.62m wide= 0.0%
+t= 297.0s birds=100000 |N|=6.62 R= 0.88m cluster= 98.4% spread= 27.1m Rh=181.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=139.6m Rmax= 15.03m wide= 0.0%
+t= 298.0s birds=100000 |N|=6.79 R= 0.87m cluster= 98.4% spread= 25.7m Rh=179.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=130.6m Rmax= 18.06m wide= 0.0%
+t= 299.0s birds=100000 |N|=6.85 R= 0.85m cluster= 98.4% spread= 24.1m Rh=181.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=121.7m Rmax= 21.51m wide= 0.0%
+t= 300.0s birds=100000 |N|=6.84 R= 0.84m cluster= 98.4% spread= 22.5m Rh=180.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=112.7m Rmax= 21.88m wide= 0.0%
+t= 301.0s birds=100000 |N|=6.83 R= 0.82m cluster= 98.4% spread= 21.0m Rh=176.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=103.8m Rmax= 21.83m wide= 0.0%
+t= 302.0s birds=100000 |N|=6.80 R= 0.81m cluster= 98.4% spread= 19.6m Rh=171.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 95.1m Rmax= 19.10m wide= 0.0%
+t= 303.0s birds=100000 |N|=6.79 R= 0.80m cluster= 98.4% spread= 18.2m Rh=175.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 86.4m Rmax= 16.38m wide= 0.0%
+t= 304.0s birds=100000 |N|=6.77 R= 0.79m cluster= 98.4% spread= 17.0m Rh=178.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 77.9m Rmax= 14.15m wide= 0.0%
+t= 305.0s birds=100000 |N|=6.78 R= 0.78m cluster= 98.4% spread= 16.0m Rh=178.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 69.7m Rmax= 12.30m wide= 0.0%
+t= 306.0s birds=100000 |N|=6.80 R= 0.78m cluster= 98.4% spread= 15.0m Rh=180.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 61.9m Rmax=  9.32m wide= 0.0%
+t= 307.0s birds=100000 |N|=6.83 R= 0.77m cluster= 98.4% spread= 14.3m Rh=179.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 54.6m Rmax=  7.47m wide= 0.0%
+t= 308.0s birds=100000 |N|=6.84 R= 0.77m cluster= 98.4% spread= 13.8m Rh=175.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 48.3m Rmax=  6.11m wide= 0.0%
+t= 309.0s birds=100000 |N|=6.82 R= 0.76m cluster= 98.4% spread= 13.5m Rh=169.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 43.2m Rmax=  5.00m wide= 0.0%
+t= 310.0s birds=100000 |N|=6.75 R= 0.76m cluster= 98.4% spread= 13.4m Rh=161.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.8m Rmax=  4.31m wide= 0.0%
+t= 311.0s birds=100000 |N|=6.67 R= 0.77m cluster= 98.4% spread= 13.5m Rh=151.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 38.6m Rmax=  3.36m wide= 0.0%
+t= 312.0s birds=100000 |N|=6.58 R= 0.78m cluster= 98.4% spread= 13.8m Rh=142.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.9m Rmax=  2.84m wide= 0.0%
+t= 313.0s birds=100000 |N|=6.51 R= 0.79m cluster= 98.4% spread= 14.4m Rh=132.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 43.4m Rmax=  2.60m wide= 0.0%
+t= 314.0s birds=100000 |N|=6.46 R= 0.81m cluster= 98.4% spread= 15.1m Rh=122.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 48.6m Rmax=  2.89m wide= 0.0%
+t= 315.0s birds=100000 |N|=6.43 R= 0.82m cluster= 98.4% spread= 16.0m Rh=113.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 55.0m Rmax=  2.66m wide= 0.0%
+t= 316.0s birds=100000 |N|=6.40 R= 0.84m cluster= 98.4% spread= 17.0m Rh=105.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 62.3m Rmax=  3.00m wide= 0.0%
+t= 317.0s birds=100000 |N|=6.38 R= 0.87m cluster= 98.4% spread= 18.1m Rh=104.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 70.2m Rmax=  3.06m wide= 0.0%
+t= 318.0s birds=100000 |N|=6.38 R= 0.89m cluster= 98.4% spread= 19.3m Rh=112.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 78.5m Rmax=  2.91m wide= 0.0%
+t= 319.0s birds=100000 |N|=6.39 R= 0.91m cluster= 98.4% spread= 20.6m Rh=121.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 87.0m Rmax=  2.92m wide= 0.0%
+t= 320.0s birds=100000 |N|=6.39 R= 0.93m cluster= 98.4% spread= 22.0m Rh=130.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 95.8m Rmax=  3.11m wide= 0.0%
+t= 321.0s birds=100000 |N|=6.40 R= 0.96m cluster= 98.4% spread= 23.5m Rh=139.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=104.7m Rmax=  2.66m wide= 0.0%
+t= 322.0s birds=100000 |N|=6.40 R= 0.98m cluster= 98.4% spread= 25.0m Rh=148.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=113.7m Rmax=  2.72m wide= 0.0%
+t= 323.0s birds=100000 |N|=6.41 R= 1.00m cluster= 98.4% spread= 26.6m Rh=156.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=122.8m Rmax=  2.59m wide= 0.0%
+t= 324.0s birds=100000 |N|=6.45 R= 1.02m cluster= 98.4% spread= 28.2m Rh=164.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=132.0m Rmax=  2.61m wide= 0.0%
+t= 325.0s birds=100000 |N|=6.60 R= 1.03m cluster= 98.4% spread= 29.3m Rh=170.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=141.0m Rmax=  2.70m wide= 0.0%
+t= 326.0s birds=100000 |N|=6.83 R= 1.02m cluster= 98.4% spread= 29.9m Rh=175.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=149.4m Rmax=  2.94m wide= 0.0%
+t= 327.0s birds=100000 |N|=7.09 R= 0.98m cluster= 98.4% spread= 30.1m Rh=178.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=156.4m Rmax=  2.64m wide= 0.0%
+t= 328.0s birds=100000 |N|=7.16 R= 0.94m cluster= 98.4% spread= 30.3m Rh=180.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=161.4m Rmax=  2.73m wide= 0.0%
+t= 329.0s birds=100000 |N|=6.99 R= 0.91m cluster= 98.4% spread= 30.3m Rh=182.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=164.1m Rmax=  2.95m wide= 0.0%
+t= 330.0s birds=100000 |N|=6.87 R= 0.89m cluster= 98.4% spread= 30.2m Rh=182.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=164.4m Rmax=  2.73m wide= 0.0%
+t= 331.0s birds=100000 |N|=6.78 R= 0.88m cluster= 98.4% spread= 30.1m Rh=182.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=162.2m Rmax=  3.79m wide= 0.0%
+t= 332.0s birds=100000 |N|=6.69 R= 0.87m cluster= 98.4% spread= 29.9m Rh=183.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=157.7m Rmax=  4.96m wide= 0.0%
+t= 333.0s birds=100000 |N|=6.59 R= 0.88m cluster= 98.4% spread= 29.7m Rh=179.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=151.2m Rmax=  3.83m wide= 0.0%
+t= 334.0s birds=100000 |N|=6.57 R= 0.89m cluster= 98.4% spread= 29.2m Rh=173.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=143.2m Rmax=  3.70m wide= 0.0%
+t= 335.0s birds=100000 |N|=6.70 R= 0.89m cluster= 98.4% spread= 28.1m Rh=175.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=134.4m Rmax=  3.29m wide= 0.0%
+t= 336.0s birds=100000 |N|=6.84 R= 0.88m cluster= 98.4% spread= 26.4m Rh=178.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=125.5m Rmax=  2.77m wide= 0.0%
+t= 337.0s birds=100000 |N|=6.88 R= 0.86m cluster= 98.4% spread= 24.7m Rh=181.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=116.5m Rmax=  3.58m wide= 0.0%
+t= 338.0s birds=100000 |N|=6.88 R= 0.84m cluster= 98.4% spread= 23.0m Rh=181.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=107.7m Rmax=  3.74m wide= 0.0%
+t= 339.0s birds=100000 |N|=6.86 R= 0.82m cluster= 98.4% spread= 21.4m Rh=180.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 99.0m Rmax=  2.69m wide= 0.0%
+t= 340.0s birds=100000 |N|=6.87 R= 0.81m cluster= 98.4% spread= 19.9m Rh=175.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 90.3m Rmax=  2.60m wide= 0.0%
+t= 341.0s birds=100000 |N|=6.85 R= 0.79m cluster= 98.4% spread= 18.4m Rh=175.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 81.8m Rmax=  2.71m wide= 0.0%
+t= 342.0s birds=100000 |N|=6.86 R= 0.78m cluster= 98.4% spread= 17.1m Rh=179.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 73.5m Rmax=  2.58m wide= 0.0%
+t= 343.0s birds=100000 |N|=6.86 R= 0.76m cluster= 98.4% spread= 15.8m Rh=180.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 65.6m Rmax=  2.62m wide= 0.0%
+t= 344.0s birds=100000 |N|=6.88 R= 0.75m cluster= 98.4% spread= 14.8m Rh=178.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 58.1m Rmax=  2.81m wide= 0.0%
+t= 345.0s birds=100000 |N|=6.93 R= 0.74m cluster= 98.4% spread= 13.9m Rh=180.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 51.3m Rmax=  2.72m wide= 0.0%
+t= 346.0s birds=100000 |N|=6.96 R= 0.73m cluster= 98.4% spread= 13.2m Rh=180.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 45.6m Rmax=  2.51m wide= 0.0%
+t= 347.0s birds=100000 |N|=6.93 R= 0.72m cluster= 98.4% spread= 12.7m Rh=175.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.4m Rmax=  2.67m wide= 0.0%
+t= 348.0s birds=100000 |N|=6.84 R= 0.71m cluster= 98.4% spread= 12.4m Rh=169.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.2m Rmax=  2.64m wide= 0.0%
+t= 349.0s birds=100000 |N|=6.75 R= 0.71m cluster= 98.4% spread= 12.3m Rh=161.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.3m Rmax=  2.87m wide= 0.0%
+t= 350.0s birds=100000 |N|=6.63 R= 0.72m cluster= 98.4% spread= 12.5m Rh=152.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.7m Rmax=  2.72m wide= 0.0%
+t= 351.0s birds=100000 |N|=6.52 R= 0.73m cluster= 98.4% spread= 12.9m Rh=143.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.1m Rmax=  2.73m wide= 0.0%
+t= 352.0s birds=100000 |N|=6.47 R= 0.74m cluster= 98.4% spread= 13.4m Rh=133.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.0m Rmax=  2.73m wide= 0.0%
+t= 353.0s birds=100000 |N|=6.43 R= 0.76m cluster= 98.4% spread= 14.1m Rh=123.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 58.9m Rmax=  2.89m wide= 0.0%
+t= 354.0s birds=100000 |N|=6.41 R= 0.78m cluster= 98.4% spread= 15.0m Rh=113.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 66.5m Rmax=  2.93m wide= 0.0%
+t= 355.0s birds=100000 |N|=6.38 R= 0.80m cluster= 98.4% spread= 16.0m Rh=104.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 74.6m Rmax=  2.68m wide= 0.0%
+t= 356.0s birds=100000 |N|=6.36 R= 0.83m cluster= 98.4% spread= 17.1m Rh=113.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 83.0m Rmax=  2.77m wide= 0.0%
+t= 357.0s birds=100000 |N|=6.37 R= 0.85m cluster= 98.4% spread= 18.3m Rh=122.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 91.7m Rmax=  2.94m wide= 0.0%
+t= 358.0s birds=100000 |N|=6.37 R= 0.87m cluster= 98.4% spread= 19.6m Rh=131.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=100.5m Rmax=  3.10m wide= 0.0%
+t= 359.0s birds=100000 |N|=6.38 R= 0.90m cluster= 98.4% spread= 21.0m Rh=140.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=109.4m Rmax=  2.79m wide= 0.0%
+t= 360.0s birds=100000 |N|=6.38 R= 0.92m cluster= 98.4% spread= 22.5m Rh=149.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=118.5m Rmax=  2.83m wide= 0.0%
+t= 361.0s birds=100000 |N|=6.39 R= 0.94m cluster= 98.4% spread= 24.0m Rh=158.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=127.6m Rmax=  3.07m wide= 0.0%
+t= 362.0s birds=100000 |N|=6.46 R= 0.96m cluster= 98.4% spread= 25.5m Rh=165.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=136.8m Rmax=  3.07m wide= 0.0%
+t= 363.0s birds=100000 |N|=6.65 R= 0.97m cluster= 98.4% spread= 26.5m Rh=172.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=145.7m Rmax=  3.50m wide= 0.0%
+t= 364.0s birds=100000 |N|=6.89 R= 0.95m cluster= 98.4% spread= 27.1m Rh=176.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=153.8m Rmax=  2.88m wide= 0.0%
+t= 365.0s birds=100000 |N|=7.06 R= 0.92m cluster= 98.4% spread= 27.5m Rh=180.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=160.2m Rmax=  2.64m wide= 0.0%
+t= 366.0s birds=100000 |N|=7.04 R= 0.89m cluster= 98.4% spread= 27.8m Rh=183.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=164.6m Rmax=  2.51m wide= 0.0%
+t= 367.0s birds=100000 |N|=6.98 R= 0.86m cluster= 98.4% spread= 27.9m Rh=184.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=166.6m Rmax=  2.73m wide= 0.0%
+t= 368.0s birds=100000 |N|=6.88 R= 0.84m cluster= 98.4% spread= 27.8m Rh=183.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=166.1m Rmax=  2.93m wide= 0.0%
+t= 369.0s birds=100000 |N|=6.70 R= 0.84m cluster= 98.4% spread= 27.7m Rh=181.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=163.1m Rmax=  2.73m wide= 0.0%
+t= 370.0s birds=100000 |N|=6.53 R= 0.84m cluster= 98.4% spread= 27.4m Rh=178.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=157.8m Rmax=  2.81m wide= 0.0%
+t= 371.0s birds=100000 |N|=6.47 R= 0.86m cluster= 98.4% spread= 27.1m Rh=173.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=150.7m Rmax=  2.63m wide= 0.0%
+t= 372.0s birds=100000 |N|=6.55 R= 0.87m cluster= 98.4% spread= 26.6m Rh=169.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=142.2m Rmax=  2.68m wide= 0.0%
+t= 373.0s birds=100000 |N|=6.74 R= 0.87m cluster= 98.4% spread= 25.5m Rh=174.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=133.2m Rmax=  2.75m wide= 0.0%
+t= 374.0s birds=100000 |N|=6.86 R= 0.86m cluster= 98.4% spread= 24.1m Rh=178.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=124.1m Rmax=  2.65m wide= 0.0%
+t= 375.0s birds=100000 |N|=6.86 R= 0.84m cluster= 98.4% spread= 22.6m Rh=180.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=115.1m Rmax=  2.60m wide= 0.0%
+t= 376.0s birds=100000 |N|=6.84 R= 0.82m cluster= 98.4% spread= 21.3m Rh=180.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=106.3m Rmax=  3.93m wide= 0.0%
+t= 377.0s birds=100000 |N|=6.82 R= 0.81m cluster= 98.4% spread= 20.0m Rh=181.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 97.5m Rmax=  2.80m wide= 0.0%
+t= 378.0s birds=100000 |N|=6.80 R= 0.80m cluster= 98.4% spread= 18.7m Rh=179.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 88.9m Rmax=  2.58m wide= 0.0%
+t= 379.0s birds=100000 |N|=6.80 R= 0.78m cluster= 98.4% spread= 17.6m Rh=175.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 80.4m Rmax=  2.50m wide= 0.0%
+t= 380.0s birds=100000 |N|=6.78 R= 0.78m cluster= 98.4% spread= 16.6m Rh=175.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 72.1m Rmax=  2.98m wide= 0.0%
+t= 381.0s birds=100000 |N|=6.78 R= 0.77m cluster= 98.4% spread= 15.7m Rh=178.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 64.3m Rmax=  2.62m wide= 0.0%
+t= 382.0s birds=100000 |N|=6.78 R= 0.76m cluster= 98.4% spread= 15.0m Rh=179.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 56.9m Rmax=  3.26m wide= 0.0%
+t= 383.0s birds=100000 |N|=6.79 R= 0.76m cluster= 98.4% spread= 14.5m Rh=179.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 50.3m Rmax=  2.75m wide= 0.0%
+t= 384.0s birds=100000 |N|=6.78 R= 0.76m cluster= 98.4% spread= 14.1m Rh=179.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 44.9m Rmax=  2.74m wide= 0.0%
+t= 385.0s birds=100000 |N|=6.73 R= 0.76m cluster= 98.4% spread= 13.9m Rh=178.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.0m Rmax=  2.82m wide= 0.0%
+t= 386.0s birds=100000 |N|=6.65 R= 0.77m cluster= 98.4% spread= 13.9m Rh=173.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 39.2m Rmax=  2.70m wide= 0.0%
+t= 387.0s birds=100000 |N|=6.55 R= 0.78m cluster= 98.4% spread= 14.0m Rh=167.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 39.8m Rmax=  2.91m wide= 0.0%
+t= 388.0s birds=100000 |N|=6.48 R= 0.79m cluster= 99.8% spread= 14.4m Rh=158.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 42.6m Rmax=  2.65m wide= 0.0%
+t= 389.0s birds=100000 |N|=6.45 R= 0.81m cluster= 99.8% spread= 15.0m Rh=149.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 47.2m Rmax=  3.34m wide= 0.0%
+t= 390.0s birds=100000 |N|=6.43 R= 0.83m cluster= 98.4% spread= 15.8m Rh=139.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 53.3m Rmax=  9.76m wide= 0.0%
+t= 391.0s birds=100000 |N|=6.42 R= 0.85m cluster= 98.4% spread= 16.7m Rh=130.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 60.2m Rmax=  9.60m wide= 0.0%
+t= 392.0s birds=100000 |N|=6.41 R= 0.87m cluster= 98.4% spread= 17.7m Rh=121.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 67.9m Rmax=  5.21m wide= 0.0%
+t= 393.0s birds=100000 |N|=6.40 R= 0.89m cluster= 98.4% spread= 18.9m Rh=112.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 75.9m Rmax=  2.81m wide= 0.0%
+t= 394.0s birds=100000 |N|=6.39 R= 0.91m cluster= 98.4% spread= 20.2m Rh=118.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 84.3m Rmax=  2.77m wide= 0.0%
+t= 395.0s birds=100000 |N|=6.39 R= 0.94m cluster= 98.4% spread= 21.6m Rh=126.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 93.0m Rmax=  3.98m wide= 0.0%
+t= 396.0s birds=100000 |N|=6.40 R= 0.96m cluster= 98.4% spread= 23.0m Rh=136.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=101.8m Rmax=  3.70m wide= 0.0%
+t= 397.0s birds=100000 |N|=6.41 R= 0.98m cluster= 98.4% spread= 24.6m Rh=144.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=110.7m Rmax=  2.96m wide= 0.0%
+t= 398.0s birds=100000 |N|=6.42 R= 1.00m cluster= 98.4% spread= 26.1m Rh=153.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=119.7m Rmax=  2.82m wide= 0.0%
+t= 399.0s birds=100000 |N|=6.44 R= 1.02m cluster= 98.4% spread= 27.8m Rh=162.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=128.8m Rmax=  2.71m wide= 0.0%
+t= 400.0s birds=100000 |N|=6.55 R= 1.03m cluster= 98.4% spread= 29.1m Rh=169.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=137.8m Rmax=  2.84m wide= 0.0%
+t= 401.0s birds=100000 |N|=6.77 R= 1.03m cluster= 98.4% spread= 29.7m Rh=173.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=146.4m Rmax=  3.25m wide= 0.0%
+t= 402.0s birds=100000 |N|=6.99 R= 1.00m cluster= 98.4% spread= 30.1m Rh=176.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=153.8m Rmax=  3.12m wide= 0.0%
+t= 403.0s birds=100000 |N|=7.20 R= 0.96m cluster= 98.4% spread= 30.3m Rh=179.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=159.3m Rmax=  2.73m wide= 0.0%
+t= 404.0s birds=100000 |N|=7.06 R= 0.92m cluster= 98.4% spread= 30.5m Rh=183.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=162.6m Rmax=  2.71m wide= 0.0%
+t= 405.0s birds=100000 |N|=6.92 R= 0.90m cluster= 98.4% spread= 30.6m Rh=182.8m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=163.5m Rmax=  2.97m wide= 0.0%
+t= 406.0s birds=100000 |N|=6.81 R= 0.88m cluster= 98.4% spread= 30.6m Rh=181.8m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=161.9m Rmax=  3.98m wide= 0.0%
+t= 407.0s birds=100000 |N|=6.71 R= 0.87m cluster= 98.4% spread= 30.5m Rh=183.5m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=157.9m Rmax=  7.90m wide= 0.0%
+t= 408.0s birds=100000 |N|=6.58 R= 0.88m cluster= 98.4% spread= 30.4m Rh=181.5m dz= 3.7m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=151.8m Rmax=  6.88m wide= 0.0%
+t= 409.0s birds=100000 |N|=6.56 R= 0.89m cluster= 98.4% spread= 30.1m Rh=176.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=144.1m Rmax=  6.48m wide= 0.0%
+t= 410.0s birds=100000 |N|=6.66 R= 0.89m cluster= 98.5% spread= 29.2m Rh=169.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=135.3m Rmax=  5.71m wide= 0.0%
+t= 411.0s birds=100000 |N|=6.82 R= 0.88m cluster= 98.4% spread= 27.8m Rh=174.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=126.3m Rmax=  4.72m wide= 0.0%
+t= 412.0s birds=100000 |N|=6.88 R= 0.86m cluster= 98.4% spread= 26.1m Rh=179.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=117.3m Rmax=  6.03m wide= 0.0%
+t= 413.0s birds=100000 |N|=6.87 R= 0.84m cluster= 98.4% spread= 24.4m Rh=181.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=108.4m Rmax=  3.18m wide= 0.0%
+t= 414.0s birds=100000 |N|=6.86 R= 0.82m cluster= 98.4% spread= 22.8m Rh=180.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 99.6m Rmax=  2.65m wide= 0.0%
+t= 415.0s birds=100000 |N|=6.85 R= 0.81m cluster= 98.4% spread= 21.2m Rh=179.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 91.0m Rmax=  2.64m wide= 0.0%
+t= 416.0s birds=100000 |N|=6.84 R= 0.79m cluster= 98.4% spread= 19.6m Rh=178.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 82.6m Rmax=  2.70m wide= 0.0%
+t= 417.0s birds=100000 |N|=6.84 R= 0.78m cluster= 98.4% spread= 18.2m Rh=177.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 74.3m Rmax=  2.48m wide= 0.0%
+t= 418.0s birds=100000 |N|=6.85 R= 0.77m cluster= 98.4% spread= 16.9m Rh=174.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 66.4m Rmax=  2.58m wide= 0.0%
+t= 419.0s birds=100000 |N|=6.88 R= 0.76m cluster= 98.4% spread= 15.7m Rh=176.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 58.9m Rmax=  2.59m wide= 0.0%
+t= 420.0s birds=100000 |N|=6.92 R= 0.75m cluster= 98.4% spread= 14.7m Rh=180.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.1m Rmax=  2.42m wide= 0.0%
+t= 421.0s birds=100000 |N|=6.93 R= 0.74m cluster= 98.4% spread= 13.8m Rh=181.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.3m Rmax=  2.65m wide= 0.0%
+t= 422.0s birds=100000 |N|=6.95 R= 0.73m cluster= 98.4% spread= 13.2m Rh=179.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 42.0m Rmax=  3.11m wide= 0.0%
+t= 423.0s birds=100000 |N|=6.93 R= 0.72m cluster= 98.4% spread= 12.8m Rh=179.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.5m Rmax=  2.74m wide= 0.0%
+t= 424.0s birds=100000 |N|=6.84 R= 0.72m cluster= 98.4% spread= 12.6m Rh=175.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.3m Rmax=  2.73m wide= 0.0%
+t= 425.0s birds=100000 |N|=6.69 R= 0.72m cluster= 99.8% spread= 12.6m Rh=170.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.4m Rmax=  2.79m wide= 0.0%
+t= 426.0s birds=100000 |N|=6.58 R= 0.73m cluster= 99.8% spread= 12.8m Rh=162.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 45.5m Rmax=  2.63m wide= 0.0%
+t= 427.0s birds=100000 |N|=6.48 R= 0.75m cluster= 99.8% spread= 13.3m Rh=153.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 51.2m Rmax=  3.03m wide= 0.0%
+t= 428.0s birds=100000 |N|=6.43 R= 0.76m cluster= 98.4% spread= 14.0m Rh=143.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 57.9m Rmax=  4.71m wide= 0.0%
+t= 429.0s birds=100000 |N|=6.40 R= 0.78m cluster= 98.4% spread= 14.9m Rh=134.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 65.3m Rmax=  7.23m wide= 0.0%
+t= 430.0s birds=100000 |N|=6.38 R= 0.81m cluster= 98.4% spread= 15.9m Rh=125.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 73.2m Rmax=  5.50m wide= 0.0%
+t= 431.0s birds=100000 |N|=6.35 R= 0.83m cluster= 98.4% spread= 17.1m Rh=115.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 81.5m Rmax=  3.86m wide= 0.0%
+t= 432.0s birds=100000 |N|=6.36 R= 0.85m cluster= 98.4% spread= 18.4m Rh=120.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 90.1m Rmax=  3.69m wide= 0.0%
+t= 433.0s birds=100000 |N|=6.35 R= 0.88m cluster= 98.4% spread= 19.8m Rh=129.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 98.8m Rmax=  2.79m wide= 0.0%
+t= 434.0s birds=100000 |N|=6.37 R= 0.90m cluster= 98.4% spread= 21.3m Rh=138.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=107.7m Rmax=  2.80m wide= 0.0%
+t= 435.0s birds=100000 |N|=6.38 R= 0.92m cluster= 98.4% spread= 22.9m Rh=147.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=116.6m Rmax=  2.86m wide= 0.0%
+t= 436.0s birds=100000 |N|=6.39 R= 0.94m cluster= 98.4% spread= 24.5m Rh=156.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=125.7m Rmax=  3.39m wide= 0.0%
+t= 437.0s birds=100000 |N|=6.44 R= 0.96m cluster= 98.4% spread= 26.1m Rh=164.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=134.8m Rmax=  3.25m wide= 0.0%
+t= 438.0s birds=100000 |N|=6.60 R= 0.97m cluster= 98.4% spread= 27.4m Rh=170.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=143.8m Rmax=  2.72m wide= 0.0%
+t= 439.0s birds=100000 |N|=6.82 R= 0.96m cluster= 98.4% spread= 28.1m Rh=175.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=152.1m Rmax=  2.65m wide= 0.0%
+t= 440.0s birds=100000 |N|=6.96 R= 0.94m cluster= 98.4% spread= 28.7m Rh=178.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=158.9m Rmax=  2.79m wide= 0.0%
+t= 441.0s birds=100000 |N|=6.99 R= 0.92m cluster= 98.4% spread= 29.1m Rh=183.9m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=163.7m Rmax=  2.67m wide= 0.0%
+t= 442.0s birds=100000 |N|=6.93 R= 0.89m cluster= 98.4% spread= 29.3m Rh=185.2m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=166.2m Rmax=  2.52m wide= 0.0%
+t= 443.0s birds=100000 |N|=6.90 R= 0.87m cluster= 98.4% spread= 29.4m Rh=184.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=166.2m Rmax=  4.93m wide= 0.0%
+t= 444.0s birds=100000 |N|=6.82 R= 0.86m cluster= 98.4% spread= 29.4m Rh=181.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=163.6m Rmax=  5.36m wide= 0.0%
+t= 445.0s birds=100000 |N|=6.67 R= 0.85m cluster= 98.4% spread= 29.2m Rh=180.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=158.8m Rmax=  6.55m wide= 0.0%
+t= 446.0s birds=100000 |N|=6.51 R= 0.86m cluster= 98.4% spread= 29.0m Rh=177.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=151.9m Rmax=  6.30m wide= 0.0%
+t= 447.0s birds=100000 |N|=6.52 R= 0.88m cluster= 98.4% spread= 28.6m Rh=172.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=143.5m Rmax=  7.16m wide= 0.0%
+t= 448.0s birds=100000 |N|=6.69 R= 0.88m cluster= 98.4% spread= 27.6m Rh=166.5m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=134.5m Rmax=  7.17m wide= 0.0%
+t= 449.0s birds=100000 |N|=6.83 R= 0.87m cluster= 98.4% spread= 26.2m Rh=172.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=125.3m Rmax=  8.79m wide= 0.0%
+t= 450.0s birds=100000 |N|=6.84 R= 0.85m cluster= 98.4% spread= 24.8m Rh=176.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=116.2m Rmax=  8.52m wide= 0.0%
+t= 451.0s birds=100000 |N|=6.83 R= 0.83m cluster= 98.4% spread= 23.3m Rh=180.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=107.3m Rmax=  7.16m wide= 0.0%
+t= 452.0s birds=100000 |N|=6.80 R= 0.82m cluster= 98.4% spread= 21.9m Rh=185.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 98.5m Rmax=  8.95m wide= 0.0%
+t= 453.0s birds=100000 |N|=6.78 R= 0.81m cluster= 98.4% spread= 20.5m Rh=183.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 89.8m Rmax= 10.42m wide= 0.0%
+t= 454.0s birds=100000 |N|=6.77 R= 0.80m cluster= 98.4% spread= 19.3m Rh=178.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 81.4m Rmax=  7.41m wide= 0.0%
+t= 455.0s birds=100000 |N|=6.77 R= 0.79m cluster= 98.4% spread= 18.1m Rh=177.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 73.2m Rmax=  6.77m wide= 0.0%
+t= 456.0s birds=100000 |N|=6.78 R= 0.79m cluster= 98.4% spread= 17.0m Rh=175.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 65.3m Rmax=  7.02m wide= 0.0%
+t= 457.0s birds=100000 |N|=6.83 R= 0.78m cluster= 98.4% spread= 16.1m Rh=172.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 57.9m Rmax=  6.25m wide= 0.0%
+t= 458.0s birds=100000 |N|=6.83 R= 0.78m cluster= 98.4% spread= 15.4m Rh=178.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 51.2m Rmax=  5.01m wide= 0.0%
+t= 459.0s birds=100000 |N|=6.81 R= 0.77m cluster= 98.4% spread= 14.8m Rh=180.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 45.6m Rmax=  3.75m wide= 0.0%
+t= 460.0s birds=100000 |N|=6.75 R= 0.77m cluster= 98.4% spread= 14.5m Rh=179.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.4m Rmax=  2.83m wide= 0.0%
+t= 461.0s birds=100000 |N|=6.67 R= 0.78m cluster= 98.4% spread= 14.3m Rh=181.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.2m Rmax=  2.82m wide= 0.0%
+t= 462.0s birds=100000 |N|=6.58 R= 0.79m cluster= 98.4% spread= 14.3m Rh=179.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.3m Rmax=  3.32m wide= 0.0%
+t= 463.0s birds=100000 |N|=6.51 R= 0.80m cluster= 99.8% spread= 14.5m Rh=174.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.7m Rmax=  3.23m wide= 0.0%
+t= 464.0s birds=100000 |N|=6.55 R= 0.82m cluster= 99.8% spread= 14.9m Rh=167.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.0m Rmax=  2.87m wide= 0.0%
+t= 465.0s birds=100000 |N|=6.46 R= 0.83m cluster= 99.8% spread= 15.6m Rh=159.5m dz= 3.9m clamp= 0.0% v= 9.9m/s hstd= 4.7m rc= 51.8m Rmax=  2.77m wide= 0.0%
+t= 466.0s birds=100000 |N|=6.41 R= 0.85m cluster= 99.8% spread= 16.4m Rh=150.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 58.6m Rmax=  3.15m wide= 0.0%
+t= 467.0s birds=100000 |N|=6.40 R= 0.88m cluster= 99.8% spread= 17.4m Rh=141.0m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 66.0m Rmax=  4.64m wide= 0.0%
+t= 468.0s birds=100000 |N|=6.39 R= 0.90m cluster= 98.4% spread= 18.6m Rh=131.7m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 74.0m Rmax=  6.56m wide= 0.0%
+t= 469.0s birds=100000 |N|=6.40 R= 0.92m cluster= 98.5% spread= 19.8m Rh=122.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 82.3m Rmax=  7.13m wide= 0.0%
+t= 470.0s birds=100000 |N|=6.39 R= 0.94m cluster= 98.5% spread= 21.2m Rh=123.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 90.9m Rmax=  8.50m wide= 0.0%
+t= 471.0s birds=100000 |N|=6.39 R= 0.97m cluster= 98.4% spread= 22.7m Rh=131.8m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 99.6m Rmax=  9.94m wide= 0.0%
+t= 472.0s birds=100000 |N|=6.41 R= 0.99m cluster= 98.4% spread= 24.2m Rh=141.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=108.5m Rmax= 10.48m wide= 0.0%
+t= 473.0s birds=100000 |N|=6.41 R= 1.01m cluster= 98.4% spread= 25.8m Rh=150.4m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=117.4m Rmax= 11.47m wide= 0.0%
+t= 474.0s birds=100000 |N|=6.42 R= 1.03m cluster= 98.4% spread= 27.5m Rh=159.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=126.5m Rmax= 12.21m wide= 0.0%
+t= 475.0s birds=100000 |N|=6.50 R= 1.04m cluster= 98.4% spread= 29.0m Rh=166.8m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=135.5m Rmax= 11.89m wide= 0.0%
+t= 476.0s birds=100000 |N|=6.70 R= 1.04m cluster= 98.4% spread= 29.9m Rh=172.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=144.3m Rmax= 10.89m wide= 0.0%
+t= 477.0s birds=100000 |N|=6.92 R= 1.03m cluster= 98.4% spread= 30.4m Rh=175.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=152.1m Rmax=  8.29m wide= 0.0%
+t= 478.0s birds=100000 |N|=7.12 R= 0.99m cluster= 98.4% spread= 30.7m Rh=178.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=158.1m Rmax=  8.60m wide= 0.0%
+t= 479.0s birds=100000 |N|=7.11 R= 0.95m cluster= 98.4% spread= 31.0m Rh=182.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=162.1m Rmax=  9.63m wide= 0.0%
+t= 480.0s birds=100000 |N|=6.99 R= 0.91m cluster= 98.4% spread= 31.1m Rh=183.6m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=163.6m Rmax=  9.53m wide= 0.0%
+t= 481.0s birds=100000 |N|=6.93 R= 0.89m cluster= 98.4% spread= 31.2m Rh=184.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=162.7m Rmax=  9.27m wide= 0.0%
+t= 482.0s birds=100000 |N|=6.82 R= 0.88m cluster= 98.4% spread= 31.1m Rh=186.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=159.4m Rmax=  7.26m wide= 0.0%
+t= 483.0s birds=100000 |N|=6.64 R= 0.87m cluster= 98.4% spread= 31.0m Rh=186.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.5m rc=153.9m Rmax=  7.35m wide= 0.0%
+t= 484.0s birds=100000 |N|=6.54 R= 0.88m cluster= 98.4% spread= 30.7m Rh=183.4m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=146.5m Rmax=  7.00m wide= 0.0%
+t= 485.0s birds=100000 |N|=6.61 R= 0.89m cluster= 98.4% spread= 30.0m Rh=176.7m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=137.9m Rmax=  6.12m wide= 0.0%
+t= 486.0s birds=100000 |N|=6.77 R= 0.89m cluster= 98.4% spread= 28.7m Rh=169.1m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=128.7m Rmax=  5.70m wide= 0.0%
+t= 487.0s birds=100000 |N|=6.87 R= 0.87m cluster= 98.4% spread= 27.1m Rh=170.0m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=119.6m Rmax=  6.66m wide= 0.0%
+t= 488.0s birds=100000 |N|=6.86 R= 0.85m cluster= 98.4% spread= 25.5m Rh=175.3m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=110.6m Rmax=  7.60m wide= 0.0%
+t= 489.0s birds=100000 |N|=6.84 R= 0.83m cluster= 98.4% spread= 24.0m Rh=178.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=101.7m Rmax=  8.52m wide= 0.0%
+t= 490.0s birds=100000 |N|=6.84 R= 0.82m cluster= 98.4% spread= 22.4m Rh=181.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc= 92.9m Rmax=  8.74m wide= 0.0%
+t= 491.0s birds=100000 |N|=6.84 R= 0.80m cluster= 98.4% spread= 20.9m Rh=188.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 84.4m Rmax=  7.67m wide= 0.0%
+t= 492.0s birds=100000 |N|=6.83 R= 0.79m cluster= 98.4% spread= 19.4m Rh=196.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 76.1m Rmax=  8.04m wide= 0.0%
+t= 493.0s birds=100000 |N|=6.86 R= 0.78m cluster= 98.4% spread= 18.1m Rh=201.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 68.1m Rmax= 12.17m wide= 0.0%
+t= 494.0s birds=100000 |N|=6.89 R= 0.77m cluster= 98.4% spread= 16.8m Rh=203.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 60.6m Rmax= 11.05m wide= 0.0%
+t= 495.0s birds=100000 |N|=6.94 R= 0.76m cluster= 98.4% spread= 15.7m Rh=199.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 53.7m Rmax= 23.75m wide= 0.0%
+t= 496.0s birds=100000 |N|=6.94 R= 0.74m cluster= 98.4% spread= 14.8m Rh=192.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 47.6m Rmax= 35.88m wide= 0.0%
+t= 497.0s birds=100000 |N|=6.92 R= 0.74m cluster= 98.4% spread= 14.0m Rh=186.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 42.8m Rmax= 33.94m wide= 0.0%
+t= 498.0s birds=100000 |N|=6.90 R= 0.73m cluster= 98.4% spread= 13.5m Rh=177.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.8m Rmax= 29.85m wide= 0.0%
+t= 499.0s birds=100000 |N|=6.87 R= 0.72m cluster= 98.4% spread= 13.1m Rh=178.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.1m Rmax= 26.83m wide= 0.0%
+t= 500.0s birds=100000 |N|=6.77 R= 0.72m cluster= 98.4% spread= 13.0m Rh=180.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 40.6m Rmax= 23.36m wide= 0.0%
+t= 501.0s birds=100000 |N|=6.65 R= 0.73m cluster= 98.4% spread= 13.0m Rh=179.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 44.3m Rmax= 20.34m wide= 0.0%
+t= 502.0s birds=100000 |N|=6.53 R= 0.74m cluster= 99.7% spread= 13.2m Rh=173.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 49.6m Rmax= 17.71m wide= 0.0%
+t= 503.0s birds=100000 |N|=6.46 R= 0.75m cluster= 99.7% spread= 13.7m Rh=166.0m dz= 3.9m clamp= 0.0% v= 9.9m/s hstd= 4.7m rc= 56.0m Rmax= 15.42m wide= 0.0%
+t= 504.0s birds=100000 |N|=6.38 R= 0.77m cluster= 99.7% spread= 14.4m Rh=158.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 63.3m Rmax= 13.43m wide= 0.0%
+t= 505.0s birds=100000 |N|=6.37 R= 0.80m cluster= 98.5% spread= 15.2m Rh=149.8m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 71.1m Rmax= 11.69m wide= 0.0%
+t= 505.9s birds=100000 |N|=6.38 R= 0.82m cluster= 98.5% spread= 16.3m Rh=139.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 79.3m Rmax=  3.81m wide= 0.0%
+t= 506.9s birds=100000 |N|=6.36 R= 0.84m cluster= 98.5% spread= 17.5m Rh=130.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 87.8m Rmax=  4.73m wide= 0.0%
+t= 507.9s birds=100000 |N|=6.37 R= 0.87m cluster= 98.6% spread= 18.8m Rh=127.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 96.4m Rmax=  5.80m wide= 0.0%
+t= 508.9s birds=100000 |N|=6.36 R= 0.89m cluster= 98.6% spread= 20.3m Rh=136.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=105.3m Rmax=  6.16m wide= 0.0%
+t= 509.9s birds=100000 |N|=6.37 R= 0.92m cluster= 98.5% spread= 21.8m Rh=144.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=114.2m Rmax=  7.49m wide= 0.0%
+t= 510.9s birds=100000 |N|=6.38 R= 0.94m cluster= 98.4% spread= 23.4m Rh=153.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=123.2m Rmax=  9.27m wide= 0.0%
+t= 511.9s birds=100000 |N|=6.41 R= 0.96m cluster= 98.4% spread= 25.1m Rh=162.0m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=132.3m Rmax=  7.73m wide= 0.0%
+t= 512.9s birds=100000 |N|=6.53 R= 0.98m cluster= 98.4% spread= 26.5m Rh=168.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=141.3m Rmax=  6.74m wide= 0.0%
+t= 513.9s birds=100000 |N|=6.76 R= 0.97m cluster= 98.4% spread= 27.3m Rh=173.8m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=149.8m Rmax=  5.80m wide= 0.0%
+t= 514.9s birds=100000 |N|=6.98 R= 0.95m cluster= 98.4% spread= 27.9m Rh=177.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=157.0m Rmax=  5.40m wide= 0.0%
+t= 515.9s birds=100000 |N|=7.02 R= 0.92m cluster= 98.4% spread= 28.3m Rh=184.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=162.3m Rmax=  4.41m wide= 0.0%
+t= 516.9s birds=100000 |N|=6.92 R= 0.90m cluster= 98.4% spread= 28.6m Rh=191.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=165.4m Rmax= 12.01m wide= 0.0%
+t= 517.9s birds=100000 |N|=6.86 R= 0.88m cluster= 98.4% spread= 28.7m Rh=190.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=166.0m Rmax= 10.16m wide= 0.0%
+t= 518.9s birds=100000 |N|=6.80 R= 0.87m cluster= 98.4% spread= 28.6m Rh=182.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=164.1m Rmax=  4.19m wide= 0.0%
+t= 519.9s birds=100000 |N|=6.70 R= 0.86m cluster= 98.4% spread= 28.5m Rh=180.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=159.9m Rmax=  4.47m wide= 0.0%
+t= 520.9s birds=100000 |N|=6.56 R= 0.87m cluster= 98.5% spread= 28.3m Rh=175.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=153.5m Rmax=  3.71m wide= 0.0%
+t= 521.9s birds=100000 |N|=6.53 R= 0.88m cluster= 98.5% spread= 27.9m Rh=169.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=145.6m Rmax=  3.42m wide= 0.0%
+t= 522.9s birds=100000 |N|=6.65 R= 0.89m cluster= 98.5% spread= 27.0m Rh=170.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=136.6m Rmax=  3.25m wide= 0.0%
+t= 523.9s birds=100000 |N|=6.81 R= 0.88m cluster= 98.4% spread= 25.7m Rh=172.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=127.3m Rmax=  3.45m wide= 0.0%
+t= 524.9s birds=100000 |N|=6.85 R= 0.86m cluster= 98.4% spread= 24.4m Rh=172.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=118.1m Rmax=  2.91m wide= 0.0%
+t= 525.9s birds=100000 |N|=6.84 R= 0.84m cluster= 98.4% spread= 23.1m Rh=169.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=109.0m Rmax=  2.82m wide= 0.0%
+t= 526.9s birds=100000 |N|=6.84 R= 0.82m cluster= 98.4% spread= 21.9m Rh=173.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=100.0m Rmax=  3.09m wide= 0.0%
+t= 527.9s birds=100000 |N|=6.83 R= 0.81m cluster= 98.4% spread= 20.6m Rh=178.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 91.2m Rmax=  2.98m wide= 0.0%
+t= 528.9s birds=100000 |N|=6.81 R= 0.80m cluster= 98.4% spread= 19.5m Rh=182.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 82.6m Rmax=  4.37m wide= 0.0%
+t= 529.9s birds=100000 |N|=6.80 R= 0.79m cluster= 98.4% spread= 18.4m Rh=182.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 74.3m Rmax=  2.84m wide= 0.0%
+t= 530.9s birds=100000 |N|=6.78 R= 0.78m cluster= 98.4% spread= 17.4m Rh=181.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 66.4m Rmax=  3.26m wide= 0.0%
+t= 531.9s birds=100000 |N|=6.79 R= 0.77m cluster= 98.4% spread= 16.5m Rh=182.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 58.9m Rmax=  3.09m wide= 0.0%
+t= 532.9s birds=100000 |N|=6.78 R= 0.77m cluster= 98.4% spread= 15.7m Rh=182.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 52.1m Rmax=  3.20m wide= 0.0%
+t= 533.9s birds=100000 |N|=6.78 R= 0.77m cluster= 98.4% spread= 15.1m Rh=180.0m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 46.3m Rmax=  3.14m wide= 0.0%
+t= 534.9s birds=100000 |N|=6.79 R= 0.77m cluster= 98.4% spread= 14.7m Rh=174.6m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 41.9m Rmax=  3.31m wide= 0.0%
+t= 535.9s birds=100000 |N|=6.74 R= 0.77m cluster= 98.4% spread= 14.5m Rh=167.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.4m Rmax=  3.70m wide= 0.0%
+t= 536.9s birds=100000 |N|=6.63 R= 0.77m cluster= 98.4% spread= 14.4m Rh=174.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 39.1m Rmax=  3.90m wide= 0.0%
+t= 537.9s birds=100000 |N|=6.54 R= 0.79m cluster= 98.4% spread= 14.5m Rh=179.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 41.2m Rmax=  3.89m wide= 0.0%
+t= 538.9s birds=100000 |N|=6.48 R= 0.80m cluster= 98.5% spread= 14.8m Rh=181.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 45.3m Rmax=  3.76m wide= 0.0%
+t= 539.9s birds=100000 |N|=6.44 R= 0.82m cluster= 99.8% spread= 15.2m Rh=181.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 51.0m Rmax=  3.39m wide= 0.0%
+t= 540.9s birds=100000 |N|=6.48 R= 0.84m cluster= 99.8% spread= 15.8m Rh=178.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 57.7m Rmax=  3.27m wide= 0.0%
+t= 541.9s birds=100000 |N|=6.40 R= 0.85m cluster= 99.8% spread= 16.6m Rh=174.8m dz= 4.0m clamp= 0.0% v= 9.9m/s hstd= 4.8m rc= 65.1m Rmax=  3.29m wide= 0.0%
+t= 542.9s birds=100000 |N|=6.37 R= 0.88m cluster= 99.8% spread= 17.6m Rh=166.9m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 73.0m Rmax=  3.33m wide= 0.0%
+t= 543.9s birds=100000 |N|=6.39 R= 0.91m cluster= 98.5% spread= 18.8m Rh=158.5m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 81.3m Rmax=  4.49m wide= 0.0%
+t= 544.9s birds=100000 |N|=6.39 R= 0.93m cluster= 98.5% spread= 20.0m Rh=148.7m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 89.8m Rmax=  7.60m wide= 0.0%
+t= 545.9s birds=100000 |N|=6.40 R= 0.95m cluster= 98.6% spread= 21.4m Rh=139.1m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 98.5m Rmax=  7.02m wide= 0.0%
+t= 546.9s birds=100000 |N|=6.41 R= 0.97m cluster= 98.6% spread= 22.9m Rh=139.8m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=107.3m Rmax=  5.42m wide= 0.0%
+t= 547.9s birds=100000 |N|=6.41 R= 0.99m cluster= 98.6% spread= 24.5m Rh=148.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=116.3m Rmax=  4.76m wide= 0.0%
+t= 548.9s birds=100000 |N|=6.40 R= 1.01m cluster= 98.6% spread= 26.1m Rh=157.5m dz= 4.1m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=125.3m Rmax=  5.05m wide= 0.0%
+t= 549.9s birds=100000 |N|=6.47 R= 1.03m cluster= 98.5% spread= 27.7m Rh=164.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=134.4m Rmax=  8.50m wide= 0.0%
+t= 550.9s birds=100000 |N|=6.66 R= 1.04m cluster= 98.5% spread= 28.7m Rh=171.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=143.3m Rmax=  7.60m wide= 0.0%
+t= 551.9s birds=100000 |N|=6.89 R= 1.02m cluster= 98.5% spread= 29.2m Rh=175.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=151.3m Rmax=  6.32m wide= 0.0%
+t= 552.9s birds=100000 |N|=7.12 R= 0.99m cluster= 98.5% spread= 29.6m Rh=177.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=157.8m Rmax=  5.44m wide= 0.0%
+t= 553.9s birds=100000 |N|=7.26 R= 0.94m cluster= 98.5% spread= 29.8m Rh=180.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=162.1m Rmax=  5.25m wide= 0.0%
+t= 554.9s birds=100000 |N|=7.03 R= 0.90m cluster= 98.5% spread= 29.9m Rh=183.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=164.2m Rmax=  8.49m wide= 0.0%
+t= 555.9s birds=100000 |N|=6.89 R= 0.88m cluster= 98.5% spread= 30.0m Rh=182.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=163.7m Rmax=  6.03m wide= 0.0%
+t= 556.9s birds=100000 |N|=6.77 R= 0.86m cluster= 98.5% spread= 29.9m Rh=179.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=160.9m Rmax=  6.16m wide= 0.0%
+t= 557.9s birds=100000 |N|=6.65 R= 0.86m cluster= 98.5% spread= 29.8m Rh=175.8m dz= 3.8m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=155.8m Rmax=  6.50m wide= 0.0%
+t= 558.9s birds=100000 |N|=6.55 R= 0.87m cluster= 98.5% spread= 29.5m Rh=171.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.6m rc=148.7m Rmax=  6.85m wide= 0.0%
+t= 559.9s birds=100000 |N|=6.58 R= 0.88m cluster= 98.5% spread= 29.0m Rh=167.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=140.3m Rmax=  7.23m wide= 0.0%
+t= 560.9s birds=100000 |N|=6.75 R= 0.88m cluster= 98.5% spread= 27.8m Rh=172.8m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=131.2m Rmax=  7.62m wide= 0.0%
+t= 561.9s birds=100000 |N|=6.86 R= 0.86m cluster= 98.5% spread= 26.3m Rh=175.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=122.0m Rmax=  8.04m wide= 0.0%
+t= 562.9s birds=100000 |N|=6.90 R= 0.84m cluster= 98.5% spread= 24.7m Rh=174.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=112.8m Rmax=  8.48m wide= 0.0%
+t= 563.9s birds=100000 |N|=6.89 R= 0.83m cluster= 98.5% spread= 23.3m Rh=170.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=103.7m Rmax=  8.95m wide= 0.0%
+t= 564.9s birds=100000 |N|=6.89 R= 0.81m cluster= 98.5% spread= 21.9m Rh=165.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 94.8m Rmax=  9.44m wide= 0.0%
+t= 565.9s birds=100000 |N|=6.88 R= 0.79m cluster= 98.5% spread= 20.5m Rh=170.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 86.1m Rmax=  9.96m wide= 0.0%
+t= 566.9s birds=100000 |N|=6.87 R= 0.78m cluster= 98.5% spread= 19.2m Rh=175.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 77.6m Rmax= 10.50m wide= 0.0%
+t= 567.9s birds=100000 |N|=6.86 R= 0.76m cluster= 98.5% spread= 18.0m Rh=184.8m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 69.5m Rmax=  9.35m wide= 0.0%
+t= 568.9s birds=100000 |N|=6.85 R= 0.75m cluster= 98.5% spread= 16.8m Rh=190.4m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 61.8m Rmax= 12.98m wide= 0.0%
+t= 569.9s birds=100000 |N|=6.88 R= 0.74m cluster= 98.5% spread= 15.8m Rh=190.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 54.7m Rmax= 10.72m wide= 0.0%
+t= 570.9s birds=100000 |N|=6.91 R= 0.73m cluster= 98.5% spread= 14.9m Rh=195.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 48.6m Rmax= 11.77m wide= 0.0%
+t= 571.9s birds=100000 |N|=6.92 R= 0.72m cluster= 98.5% spread= 14.1m Rh=199.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 43.6m Rmax= 16.27m wide= 0.0%
+t= 572.9s birds=100000 |N|=6.93 R= 0.72m cluster= 98.5% spread= 13.6m Rh=200.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 40.4m Rmax= 19.62m wide= 0.0%
+t= 573.9s birds=100000 |N|=6.85 R= 0.71m cluster= 98.5% spread= 13.2m Rh=193.3m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 39.2m Rmax= 20.25m wide= 0.0%
+t= 574.9s birds=100000 |N|=6.72 R= 0.71m cluster= 98.5% spread= 13.0m Rh=185.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 40.4m Rmax= 21.05m wide= 0.0%
+t= 575.9s birds=100000 |N|=6.60 R= 0.72m cluster= 98.5% spread= 13.0m Rh=175.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 43.7m Rmax= 20.25m wide= 0.0%
+t= 576.9s birds=100000 |N|=6.51 R= 0.73m cluster= 98.5% spread= 13.1m Rh=166.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 48.8m Rmax= 19.75m wide= 0.0%
+t= 577.9s birds=100000 |N|=6.44 R= 0.75m cluster= 98.5% spread= 13.5m Rh=164.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 55.1m Rmax= 18.96m wide= 0.0%
+t= 578.9s birds=100000 |N|=6.40 R= 0.77m cluster= 99.6% spread= 14.0m Rh=173.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc= 62.3m Rmax= 18.92m wide= 0.0%
+t= 579.9s birds=100000 |N|=6.42 R= 0.79m cluster= 99.6% spread= 14.7m Rh=181.2m dz= 3.9m clamp= 0.0% v= 9.9m/s hstd= 4.8m rc= 70.0m Rmax= 17.64m wide= 0.0%
+t= 580.9s birds=100000 |N|=6.35 R= 0.81m cluster= 99.7% spread= 15.6m Rh=186.8m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 78.2m Rmax= 16.14m wide= 0.0%
+t= 581.9s birds=100000 |N|=6.36 R= 0.83m cluster= 98.5% spread= 16.6m Rh=189.5m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc= 86.6m Rmax=  8.59m wide= 0.0%
+t= 582.9s birds=100000 |N|=6.37 R= 0.86m cluster= 98.5% spread= 17.9m Rh=187.7m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc= 95.2m Rmax= 10.03m wide= 0.0%
+t= 583.9s birds=100000 |N|=6.37 R= 0.88m cluster= 98.5% spread= 19.2m Rh=181.9m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=104.0m Rmax= 14.67m wide= 0.0%
+t= 584.9s birds=100000 |N|=6.37 R= 0.90m cluster= 98.5% spread= 20.7m Rh=174.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=112.9m Rmax= 15.85m wide= 0.0%
+t= 585.9s birds=100000 |N|=6.39 R= 0.93m cluster= 98.5% spread= 22.2m Rh=165.4m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.9m rc=121.9m Rmax= 13.02m wide= 0.0%
+t= 586.9s birds=100000 |N|=6.40 R= 0.95m cluster= 98.6% spread= 23.8m Rh=160.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=131.0m Rmax=  9.50m wide= 0.0%
+t= 587.9s birds=100000 |N|=6.52 R= 0.96m cluster= 98.6% spread= 25.2m Rh=167.3m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=140.1m Rmax= 15.80m wide= 0.0%
+t= 588.9s birds=100000 |N|=6.76 R= 0.96m cluster= 98.5% spread= 26.1m Rh=173.1m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=148.8m Rmax= 17.26m wide= 0.0%
+t= 589.9s birds=100000 |N|=7.01 R= 0.94m cluster= 98.5% spread= 26.5m Rh=176.2m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=156.3m Rmax= 15.65m wide= 0.0%
+t= 590.9s birds=100000 |N|=7.21 R= 0.91m cluster= 98.5% spread= 26.9m Rh=180.6m dz= 4.0m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=162.1m Rmax= 14.65m wide= 0.0%
+t= 591.9s birds=100000 |N|=6.95 R= 0.88m cluster= 98.5% spread= 27.2m Rh=183.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.8m rc=165.7m Rmax= 13.85m wide= 0.0%
+t= 592.9s birds=100000 |N|=6.81 R= 0.86m cluster= 98.5% spread= 27.3m Rh=183.9m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=166.8m Rmax= 12.44m wide= 0.0%
+t= 593.9s birds=100000 |N|=6.72 R= 0.85m cluster= 98.5% spread= 27.4m Rh=182.2m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=165.5m Rmax= 10.63m wide= 0.0%
+t= 594.9s birds=100000 |N|=6.66 R= 0.85m cluster= 98.5% spread= 27.3m Rh=180.1m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=161.7m Rmax=  8.77m wide= 0.0%
+t= 595.9s birds=100000 |N|=6.56 R= 0.86m cluster= 98.6% spread= 27.3m Rh=175.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=155.8m Rmax=  7.01m wide= 0.0%
+t= 596.9s birds=100000 |N|=6.50 R= 0.87m cluster= 98.6% spread= 27.1m Rh=171.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=148.1m Rmax=  6.70m wide= 0.0%
+t= 597.9s birds=100000 |N|=6.61 R= 0.88m cluster= 98.6% spread= 26.4m Rh=170.7m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=139.3m Rmax=  7.06m wide= 0.0%
+t= 598.9s birds=100000 |N|=6.79 R= 0.88m cluster= 98.5% spread= 25.3m Rh=173.5m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=130.0m Rmax=  7.45m wide= 0.0%
+t= 599.9s birds=100000 |N|=6.86 R= 0.86m cluster= 98.5% spread= 23.9m Rh=174.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=120.7m Rmax=  6.98m wide= 0.0%
+# summary  birds=100000 |N|=6.86 R= 0.86m cluster= 98.5% spread= 23.9m Rh=174.4m dz= 3.9m clamp= 0.0% v=10.0m/s hstd= 4.7m rc=120.7m Rmax=  6.98m wide= 0.0%
+  criterion          scope              value              range   pass
+  cluster            every second       0.983            >= 0.90     ok
+  spread max         every second      41.080          <= 250.00     ok
+  Rh max             every second     215.915          <= 375.00     ok
+  dz max             every second       9.590           <= 20.00     ok
+  hstd               every second       3.773      [0.30, 40.00]     ok
+  hstd max           every second      11.403           <= 40.00     ok
+  clamp max          every second       0.000            <= 0.05     ok
+  cluster            settled mean       0.985            >= 0.98     ok
+  |N|                settled mean       6.681      [4.00, 12.00]     ok
+  R                  settled mean       0.851       [0.50, 6.00]     ok
+  v                  settled mean       9.972      [7.00, 13.00]     ok
+  rc                 settled mean     100.339          <= 200.00     ok
+  spread             settled mean      21.497            >= 5.00     ok
+# coherence PASS

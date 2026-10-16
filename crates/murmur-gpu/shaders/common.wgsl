@@ -2,11 +2,11 @@
 //
 // `sim.wgsl` (the per-bird force step and flight integration) and `grid.wgsl`
 // (the spatial grid that replaces the brute-force neighbour search, PLAN.md
-// phase 3) are both compiled with this file prepended, so `Params`, `Bird` and
-// the cell/bucket hash have exactly one definition. The Rust side mirrors
-// `Params` and `Bird` in `params.rs` and `bird.rs` and checks them field for
-// field in `tests/layout.rs`. The grid buffer bindings are declared in the two
-// modules that use them, not here.
+// phase 3) are both compiled with this file and `bird.wgsl` prepended, so
+// `Params`, `Bird` and the cell/bucket hash have exactly one definition. The
+// Rust side mirrors `Params` and `Bird` in `params.rs` and `bird.rs` and checks
+// them field for field in `tests/layout.rs`. The grid buffer bindings are
+// declared in the two modules that use them, not here.
 
 struct Params {
     dt: f32, du: f32, time: f32, turning: u32,
@@ -24,21 +24,14 @@ struct Params {
     inv_cell: f32, pad1: f32, pad2: f32, pad3: u32,
 }
 
-struct Bird {
-    pos: vec3<f32>, roll: f32,
-    vel: vec3<f32>, spin: f32,
-    steering: vec3<f32>, radius: f32,
-    next_decision: f32, centrality: f32, flap_phase: f32, flap_amp: f32,
-    neighbour_count: u32, returning: u32, id: u32, rng: u32,
-    alarmed: u32, zigzag_active: u32, zigzag_sign: f32, zigzag_start: f32,
-    cooldown_until: f32, flash_until: f32, pad0: u32, pad1: u32,
-}
-
 @group(0) @binding(0) var<uniform> P: Params;
 
-// The grid cell a position falls in: `floor(p / cell)`, matching `Grid::coord`
-// in `murmur-ref/src/neighbours.rs`. `inv_cell` is `1 / params::GRID_CELL`, so
-// the CPU oracle and the GPU assign the same cell and the neighbour sets agree.
+// The grid cell a position falls in: `floor(p / cell)`. The CPU oracle's
+// `Grid::coord` uses `params::GRID_CELL = 4.0 m`; the GPU uses its own
+// `grid::CELL` (`1 m`), which is only an acceleration parameter. Every query
+// keeps a candidate only after an exact distance check (`d*d <= r*r`), so the
+// neighbour set is the same for any cell size (PLAN.md phase 3/4). See
+// `crates/murmur-gpu/src/grid.rs::CELL`.
 fn cell_of(p: vec3<f32>) -> vec3<i32> {
     return vec3<i32>(floor(p * P.inv_cell));
 }

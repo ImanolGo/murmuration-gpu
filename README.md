@@ -65,7 +65,29 @@ Headless tools, without opening a window:
 cargo run -p murmuration-gpu --release -- --bench --birds 1000000          # GPU timings per pass
 cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seed 42  # GPU vs CPU reference statistics
 cargo run -p murmuration-gpu --release -- --analyze 120 --birds 50000      # per-second flock statistics
+cargo run -p murmuration-gpu --release -- --coherence 600 --birds 100000   # long-run coherence run + verdict
+cargo run -p murmuration-gpu --release -- --still docs/still.png --birds 1000000  # one rendered frame
 ```
+
+`--analyze SECONDS` prints the same per-second line and summary as the CPU
+oracle (`cargo run -p murmur-ref --bin analyze --release -- …`); add
+`--extended` for the extra statistics line.
+
+`--coherence SECONDS` runs the long flock and checks it against the phase 4
+criteria in [docs/coherence-100k.md](docs/coherence-100k.md), printing a verdict
+table and `# coherence PASS|FAIL`. It uses a lighter sampler that measures only
+the fields the criteria read — bit-identical to the ones `--analyze` prints, but
+without the 15 m nearest-neighbour scan that makes the full metric set cost ~26 s
+per simulated second at 100,000 birds.
+
+`--still PATH` simulates `--seconds` (default 60) of the flock, frames it with
+the ground camera and writes one 1280×720 PNG, and prints the wall clock it took.
+It is a simulation, not a screenshot: a million-bird frame is ~56 minutes on a
+GTX 1650 (see [docs/progress.md](docs/progress.md), phase 5).
+
+At one seed the GPU output is *statistically* comparable to the CPU oracle, not
+identical: the two engines draw the random force from different generators (see
+[Limitations](#limitations)).
 
 Planned controls:
 

@@ -29,8 +29,11 @@
 struct Clock {
     time: f32,
     step: u32,
+    // Neighbour queries that took the brute-force fallback on the last step
+    // (`gather` below). A bird that wide is a straggler whose adaptive radius
+    // has run away from the flock, and this is the run's main cost driver.
+    wide: atomic<u32>,
     pad0: u32,
-    pad1: u32,
 }
 
 struct Zz {
@@ -74,30 +77,10 @@ const TAU: f32 = 6.283185307179586;
 @group(0) @binding(7) var<storage, read_write> sorted: array<u32>;
 
 // --- flight.rs -------------------------------------------------------------
-
-// flight::forward
-fn forward(v: vec3<f32>) -> vec3<f32> {
-    if dot(v, v) > 1e-12 {
-        return normalize(v);
-    }
-    return vec3<f32>(1.0, 0.0, 0.0);
-}
-
-// flight::side_of
-fn side_of(f: vec3<f32>) -> vec3<f32> {
-    let s = cross(f, vec3<f32>(0.0, 0.0, 1.0));
-    if dot(s, s) > 1e-8 {
-        return normalize(s);
-    }
-    return vec3<f32>(1.0, 0.0, 0.0);
-}
-
-// flight::body_up
-fn body_up(f: vec3<f32>, beta: f32) -> vec3<f32> {
-    let side = side_of(f);
-    let up0 = cross(side, f);
-    return up0 * cos(beta) + side * sin(beta);
-}
+//
+// `forward`, `side_of` and `body_up` live in `bird.wgsl` (shared with the grid
+// and the renderer). Only the step and the helpers specific to the simulation
+// are defined here.
 
 // A local stand-in for glam's Vec3::normalize_or_zero.
 fn normalize_or_zero(v: vec3<f32>) -> vec3<f32> {
@@ -358,6 +341,48 @@ fn gather_bruteforce_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
     return cen;
 }
 
+// --- the bounded query -----------------------------------------------------
+
+// Cells a query would walk at this radius.
+fn grid_span(lo: vec3<i32>, hi: vec3<i32>) -> f32 {
+    let d = vec3<f32>(hi - lo) + vec3<f32>(1.0);
+    return d.x * d.y * d.z;
+}
+
+// The grid walk costs one bucket lookup per cell in the box, so its cost grows
+// with the cube of the radius: at `R = R_MAX = 100 m` a single bird would walk
+// `201^3 ≈ 8.1e6` cells — as much as ~300,000 ordinary birds — and the model
+// does let a straggler's radius get that far (`params::radius_step` clamps at
+// `R_MAX`, and the 100,000-bird flock grows birds hundreds of metres from the
+// roost). Measured, that is what made the acceptance run explode at one
+// particular simulated second instead of degrading smoothly.
+//
+// When the box is larger than the flock, walking every bird is both cheaper and
+// exact: both walks keep a bird only after the same `d2 <= r2` test, so they
+// find the same neighbours — `tests/grid.rs` checks the two agree. The choice
+// is a performance one, never a model one, and it bounds a query's cost at
+// `min(cells, n)`.
+fn gather(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
+    let lo = cell_of(p - vec3<f32>(radius));
+    let hi = cell_of(p + vec3<f32>(radius));
+    if grid_span(lo, hi) > f32(P.n) {
+        atomicAdd(&clock.wide, 1u);
+        return gather_bruteforce(p, radius, i, f_i, time);
+    }
+    return gather_grid(p, radius, i, f_i, time);
+}
+
+// The same bound for the centrality walk, which runs at `2R`.
+fn gather_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
+    let lo = cell_of(p - vec3<f32>(radius));
+    let hi = cell_of(p + vec3<f32>(radius));
+    if grid_span(lo, hi) > f32(P.n) {
+        atomicAdd(&clock.wide, 1u);
+        return gather_bruteforce_centrality(p, radius, i);
+    }
+    return gather_grid_centrality(p, radius, i);
+}
+
 // --- social.rs::decide -----------------------------------------------------
 
 // The decision itself, once a walk has filled the accumulators (the body of
@@ -472,12 +497,12 @@ fn resolve(b_in: Bird, time: f32, r: f32, f_i: vec3<f32>, acc: Acc, cen: Cen) ->
     return b;
 }
 
-// The decided bird, from the grid walk.
+// The decided bird, from the bounded neighbour walk.
 fn decide(i: u32, time: f32) -> Bird {
     let b = src[i];
     let f_i = forward(b.vel);
-    let acc = gather_grid(b.pos, b.radius, i, f_i, time);
-    let cen = gather_grid_centrality(b.pos, 2.0 * b.radius, i);
+    let acc = gather(b.pos, b.radius, i, f_i, time);
+    let cen = gather_centrality(b.pos, 2.0 * b.radius, i);
     return resolve(b, time, b.radius, f_i, acc, cen);
 }
 
@@ -555,9 +580,11 @@ fn integrate_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
 // --- clock -----------------------------------------------------------------
 
 // Advances the shared clock once per integration step, so the passes see the
-// same `time` and many steps fit in one command buffer.
+// same `time` and many steps fit in one command buffer. The step's wide-query
+// count starts here (see `gather`).
 @compute @workgroup_size(1)
 fn tick_kernel() {
     clock.step += 1u;
     clock.time += P.dt;
+    atomicStore(&clock.wide, 0u);
 }

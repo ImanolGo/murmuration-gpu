@@ -786,6 +786,10 @@ dependencies = [
 name = "murmur-render"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "glam",
+ "murmur-gpu",
+ "pollster",
  "wgpu",
 ]
 

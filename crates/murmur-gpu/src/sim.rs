@@ -23,8 +23,9 @@ use wgpu::{
     ShaderModuleDescriptor, ShaderSource, ShaderStages,
 };
 
+use crate::BIRD_WGSL;
 use crate::bird::Bird;
-use crate::device::Gpu;
+use crate::device::{Gpu, Stalled, WAIT_BUDGET};
 use crate::grid::{
     BINDING_BLOCK_SUMS, BINDING_BUCKET, BINDING_COUNTS, BINDING_OFFSETS, BINDING_SORTED,
     COMMON_WGSL, Grid,
@@ -46,8 +47,27 @@ pub struct Clock {
     pub time: f32,
     /// Integration steps taken.
     pub step: u32,
+    /// Neighbour queries that fell back to the brute-force walk on the last
+    /// step (`gather` in `sim.wgsl`); see [`Sim::wide_queries`].
+    pub wide: u32,
     pub pad0: u32,
-    pub pad1: u32,
+}
+
+/// The flock as the shader holds it, with the clock: what [`Sim::raw_state`]
+/// returns and [`Sim::from_raw`] consumes.
+///
+/// Unlike [`Snapshot`] this keeps each bird's own random stream, so a flock
+/// rebuilt from it continues the same trajectory rather than restarting the
+/// random force. A run repairs itself after a driver hang by keeping the last
+/// `RawState` and rebuilding from it.
+#[derive(Clone, Debug)]
+pub struct RawState {
+    /// The bird records, each with its own random stream.
+    pub birds: Vec<Bird>,
+    /// Simulated time \[s\].
+    pub time: f32,
+    /// Integration steps taken.
+    pub step: u32,
 }
 
 /// A running GPU flock: pipelines, buffers, the grid and the step index.
@@ -77,7 +97,7 @@ impl Sim {
     /// Builds a GPU flock for `params`, with an empty (zeroed) bird buffer.
     pub fn new(gpu: &Gpu, params: Params) -> Self {
         let device = &gpu.device;
-        let source = format!("{COMMON_WGSL}\n{SIM_WGSL}");
+        let source = format!("{COMMON_WGSL}\n{BIRD_WGSL}\n{SIM_WGSL}");
         let module = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("sim"),
             source: ShaderSource::Wgsl(source.into()),
@@ -152,7 +172,7 @@ impl Sim {
         let clock = device.create_buffer(&BufferDescriptor {
             label: Some("sim: clock"),
             size: size_of::<Clock>() as u64,
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
             mapped_at_creation: false,
         });
         let readback = device.create_buffer(&BufferDescriptor {
@@ -238,16 +258,25 @@ impl Sim {
     pub fn from_snapshot(gpu: &Gpu, snapshot: &Snapshot) -> Self {
         let mut sim = Self::new(gpu, Params::from_snapshot(snapshot));
         sim.seed = snapshot.seed;
-        let birds: Vec<Bird> = snapshot
-            .birds
-            .iter()
-            .enumerate()
-            .map(|(i, b)| Bird::from_ref(b, i as u32, snapshot.seed))
-            .collect();
+        let birds = Self::birds_from_snapshot(snapshot);
         gpu.queue
             .write_buffer(&sim.birds[0], 0, bytemuck::cast_slice(&birds));
         sim.cur = 0;
         sim
+    }
+
+    /// The bird records a [`Sim`] holds after [`Sim::from_snapshot`]: the CPU
+    /// birds with each random stream derived from the snapshot's seed.
+    ///
+    /// Exposed so a long run can keep the state it would have at step zero and
+    /// resume from there if the very first readback is the one that stalls.
+    pub fn birds_from_snapshot(snapshot: &Snapshot) -> Vec<Bird> {
+        snapshot
+            .birds
+            .iter()
+            .enumerate()
+            .map(|(i, b)| Bird::from_ref(b, i as u32, snapshot.seed))
+            .collect()
     }
 
     /// Overwrites the current bird buffer with `birds` (benchmarks and tests).
@@ -271,6 +300,12 @@ impl Sim {
         self.time
     }
 
+    /// The storage buffer holding the flock's current state, so the renderer
+    /// can draw the birds without a host round-trip.
+    pub fn bird_buffer(&self) -> &Buffer {
+        &self.birds[self.cur]
+    }
+
     /// Overrides the random-force weight on the GPU (single-step parity check).
     pub fn set_w_xi(&mut self, gpu: &Gpu, w_xi: f32) {
         self.params = self.params.with_w_xi(w_xi);
@@ -280,6 +315,30 @@ impl Sim {
     /// Encodes and submits `steps` integration steps in one command buffer.
     pub fn advance(&mut self, gpu: &Gpu, steps: u32) {
         self.run(gpu, steps, false);
+    }
+
+    /// Advances the flock by `seconds` of simulated time, submitting in short
+    /// batches so a single command buffer never outlives the driver's GPU
+    /// watchdog at large bird counts (the same reason [`crate::analyze`]
+    /// batches its steps), and **draining the queue after every batch**.
+    ///
+    /// The drain is not a nicety. Submitting the whole interval and waiting once
+    /// leaves all of it outstanding: at a million birds that is minutes of queued
+    /// work, and the single wait then times out against [`WAIT_BUDGET`] even
+    /// though the GPU is working normally — which is exactly how the first
+    /// million-bird still "stalled". Waiting per batch keeps every wait as short
+    /// as the ones a resilient run makes, and reports a real hang as [`Stalled`]
+    /// instead of freezing.
+    pub fn advance_seconds(&mut self, gpu: &Gpu, seconds: f32) -> Result<(), Stalled> {
+        let steps = (seconds / self.params.dt).max(0.0) as u32;
+        let mut done = 0;
+        while done < steps {
+            let this = 10.min(steps - done);
+            self.advance(gpu, this);
+            gpu.wait_bounded(WAIT_BUDGET)?;
+            done += this;
+        }
+        Ok(())
     }
 
     /// The same loop with the brute-force neighbour search, for the phase 3
@@ -364,10 +423,14 @@ impl Sim {
     }
 
     /// Copies the current bird state back to the host.
-    pub fn read_birds(&mut self, gpu: &Gpu) -> Vec<Bird> {
+    ///
+    /// The wait is bounded ([`WAIT_BUDGET`]): if the driver has hung, the
+    /// mapping callback never runs and an indefinite poll would block for ever.
+    /// A stalled readback is reported so the caller can reopen the device.
+    pub fn read_birds(&mut self, gpu: &Gpu) -> Result<Vec<Bird>, Stalled> {
         let bytes = (self.n * size_of::<Bird>()) as u64;
         if bytes == 0 {
-            return Vec::new();
+            return Ok(Vec::new());
         }
         let mut encoder = gpu
             .device
@@ -382,11 +445,11 @@ impl Sim {
             .map_async(wgpu::MapMode::Read, .., move |result| {
                 let _ = tx.send(result);
             });
-        gpu.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .expect("waiting for the readback to finish");
-        rx.recv()
-            .expect("the poll ran the mapping callback before returning")
+        gpu.wait_bounded(WAIT_BUDGET)?;
+        rx.recv_timeout(WAIT_BUDGET)
+            .map_err(|_| Stalled {
+                waited: WAIT_BUDGET,
+            })?
             .expect("mapping the readback buffer for reading");
 
         let range = self
@@ -396,22 +459,107 @@ impl Sim {
         let birds: Vec<Bird> = bytemuck::cast_slice(&range).to_vec();
         drop(range);
         self.readback.unmap();
-        birds
+        Ok(birds)
+    }
+
+    /// How many neighbour queries took the brute-force fallback on the last
+    /// step, read back from the clock.
+    ///
+    /// A query falls back once its radius covers more cells than the flock has
+    /// birds (see `gather` in `sim.wgsl`). A bird that wide is a straggler whose
+    /// adaptive radius has grown away from the flock, and since the grid walk
+    /// costs a bucket lookup per cell in the radius box, `R³`, one such bird can
+    /// cost as much as hundreds of thousands of ordinary ones — it is the run's
+    /// main cost driver, and zero means every query used the grid.
+    pub fn wide_queries(&mut self, gpu: &Gpu) -> Result<u32, Stalled> {
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("sim: clock readback"),
+            });
+        encoder.copy_buffer_to_buffer(&self.clock, 0, &self.readback, 0, size_of::<Clock>() as u64);
+        gpu.queue.submit(Some(encoder.finish()));
+
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.readback
+            .map_async(wgpu::MapMode::Read, .., move |result| {
+                let _ = tx.send(result);
+            });
+        gpu.wait_bounded(WAIT_BUDGET)?;
+        rx.recv_timeout(WAIT_BUDGET)
+            .map_err(|_| Stalled {
+                waited: WAIT_BUDGET,
+            })?
+            .expect("mapping the readback buffer for reading");
+
+        let range = self
+            .readback
+            .get_mapped_range(..)
+            .expect("reading the mapped range");
+        let wide = bytemuck::from_bytes::<Clock>(&range[..size_of::<Clock>()]).wide;
+        drop(range);
+        self.readback.unmap();
+        Ok(wide)
     }
 
     /// Reads the current state back as a [`Snapshot`] the CPU oracle can analyse
     /// (its random streams are placeholders; analysis never reads them).
     pub fn snapshot(&mut self, gpu: &Gpu) -> Snapshot {
-        let birds = self.read_birds(gpu);
-        Snapshot {
+        let raw = self
+            .raw_state(gpu)
+            .expect("reading the flock back for a snapshot");
+        self.snapshot_from(&raw)
+    }
+
+    /// The flock as the shader holds it, plus the clock.
+    ///
+    /// Unlike [`Snapshot`], whose birds carry placeholder random streams for the
+    /// CPU oracle, this keeps each bird's own stream, so a [`Sim`] rebuilt from
+    /// it ([`Sim::from_raw`]) continues the *same* trajectory instead of
+    /// restarting the random force. That is what makes a long run resumable
+    /// after the driver hangs it: the resumed steps are the steps the
+    /// uninterrupted run would have taken.
+    pub fn raw_state(&mut self, gpu: &Gpu) -> Result<RawState, Stalled> {
+        let birds = self.read_birds(gpu)?;
+        Ok(RawState {
+            birds,
             time: self.time,
+            step: self.step,
+        })
+    }
+
+    /// Rebuilds a flock on `gpu` from a [`RawState`], continuing its trajectory.
+    ///
+    /// `template` supplies every parameter that does not change over a run
+    /// ([`Params::from_snapshot`]); its clock is replaced by `raw`'s.
+    pub fn from_raw(gpu: &Gpu, template: Params, seed: u64, raw: &RawState) -> Self {
+        let mut params = template;
+        params.time = raw.time;
+        let mut sim = Self::new(gpu, params);
+        sim.seed = seed;
+        sim.time = raw.time;
+        sim.step = raw.step;
+        sim.write_params(gpu);
+        sim.write_clock(gpu, raw.time, raw.step);
+        gpu.queue
+            .write_buffer(&sim.birds[0], 0, bytemuck::cast_slice(&raw.birds));
+        sim.cur = 0;
+        sim
+    }
+
+    /// The CPU-facing [`Snapshot`] for a state already read back by
+    /// [`Sim::raw_state`], with this flock's own clock and knobs. The random
+    /// streams become placeholders, exactly as in [`Sim::snapshot`].
+    pub fn snapshot_from(&self, raw: &RawState) -> Snapshot {
+        Snapshot {
+            time: raw.time,
             z0: self.params.z0,
             seed: self.seed,
             target_birds: self.n,
             zigzag_k: self.params.zigzag_k,
             turning: turning_from_code(self.params.turning),
             w_xi: self.params.w_xi,
-            birds: birds.iter().map(|b| b.to_ref(self.seed)).collect(),
+            birds: raw.birds.iter().map(|b| b.to_ref(self.seed)).collect(),
         }
     }
 
@@ -424,8 +572,8 @@ impl Sim {
         let clock = Clock {
             time,
             step,
+            wide: 0,
             pad0: 0,
-            pad1: 0,
         };
         gpu.queue
             .write_buffer(&self.clock, 0, bytemuck::bytes_of(&clock));

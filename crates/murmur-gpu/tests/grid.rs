@@ -6,6 +6,7 @@
 
 use murmur_gpu::device::{self, DeviceError, Gpu};
 use murmur_gpu::sim::Sim;
+use murmur_ref::Snapshot;
 use murmur_ref::World;
 use murmur_ref::params::DT;
 
@@ -76,11 +77,6 @@ fn scan_and_sort_match_the_cpu() {
 
 /// PLAN.md phase 3 acceptance: at 2,000 birds the grid's neighbour sets match
 /// the brute-force walk for at least 99 % of birds.
-///
-/// The set itself is compared through what `decide` derives from it: the
-/// neighbour count, the centrality (a second walk over 2R_i) and the steering
-/// force (a sum over the set). Two different sets that happened to share a
-/// count would still differ in the last two.
 #[test]
 fn grid_neighbours_match_bruteforce() {
     let Some(gpu) = gpu_or_skip() else {
@@ -100,16 +96,73 @@ fn grid_neighbours_match_bruteforce() {
     }
 
     // The noise is off on both engines, so the only difference left is the
-    // neighbour search.
-    let mut grid = Sim::from_snapshot(&gpu, &snapshot);
-    grid.set_w_xi(&gpu, 0.0);
-    grid.advance(&gpu, 1);
-    let from_grid = grid.read_birds(&gpu);
+    // neighbour search. The crossover is `R > 5.8 m` at 2,000 birds, above the
+    // settled flock's ~2 m mean radius: measured, 1 query of 2,000 crossed it
+    // (a bird in the tail of the radius distribution, which is the same effect
+    // that blew the 100,000-bird run up), so this still tests the grid walk.
+    let wide = compare_walks(&gpu, &snapshot, birds, "grid");
+    assert!(
+        wide < (birds / 100) as u32,
+        "the grid test no longer exercises the grid walk: {wide} queries fell back"
+    );
+}
 
-    let mut brute = Sim::from_snapshot(&gpu, &snapshot);
-    brute.set_w_xi(&gpu, 0.0);
-    brute.advance_bruteforce(&gpu, 1);
-    let from_brute = brute.read_birds(&gpu);
+/// The bounded query: a bird whose radius covers more cells than the flock has
+/// birds takes the brute-force walk instead of the grid walk, and must get the
+/// same neighbours.
+///
+/// The model lets a straggler's radius reach `params::R_MAX = 100 m`
+/// (`radius_step` clamps there), and at the grid's 1 m cell that is ~8.1e6 cells
+/// for a single bird — as much as ~300,000 ordinary ones. Measured, that is what
+/// made the 100,000-bird acceptance run explode at one particular simulated
+/// second instead of slowing smoothly. `gather` in `sim.wgsl` therefore falls
+/// back to the brute-force walk once the box outgrows the flock; the fallback is
+/// a performance choice, so it is only valid if it changes nothing. This forces
+/// the radii past the crossover — `(2R + 1)^3 > n` — for every bird.
+#[test]
+fn a_wide_radius_query_matches_bruteforce() {
+    let Some(gpu) = gpu_or_skip() else {
+        return;
+    };
+    let birds = 2000;
+    let mut world = World::new(birds, 42);
+    for _ in 0..1000 {
+        world.step(DT);
+    }
+    // 20 m radii cover 41 cells per axis, 68,921 cells, against 2,000 birds.
+    world.radii.fill(20.0);
+    let mut snapshot = world.snapshot();
+    let time = snapshot.time;
+    for bird in &mut snapshot.birds {
+        bird.next_decision = time;
+    }
+
+    let wide = compare_walks(&gpu, &snapshot, birds, "bounded");
+    assert!(
+        wide > 0,
+        "no query took the bounded fallback, so this test compared nothing new"
+    );
+}
+
+/// Runs both walks from one snapshot (noise off, every bird deciding), checks
+/// the grid walk reproduces the brute-force one, and returns how many queries
+/// took the bounded fallback.
+///
+/// The set itself is compared through what `decide` derives from it, so a shared
+/// neighbour count cannot hide a different set.
+fn compare_walks(gpu: &Gpu, snapshot: &Snapshot, birds: usize, label: &str) -> u32 {
+    let mut grid = Sim::from_snapshot(gpu, snapshot);
+    grid.set_w_xi(gpu, 0.0);
+    grid.advance(gpu, 1);
+    let from_grid = grid.read_birds(gpu).expect("reading the grid flock back");
+    let wide = grid
+        .wide_queries(gpu)
+        .expect("reading the step's fallback count");
+
+    let mut brute = Sim::from_snapshot(gpu, snapshot);
+    brute.set_w_xi(gpu, 0.0);
+    brute.advance_bruteforce(gpu, 1);
+    let from_brute = brute.read_birds(gpu).expect("reading the brute flock back");
 
     let mut matching = 0usize;
     let mut count_mismatches = 0usize;
@@ -128,15 +181,18 @@ fn grid_neighbours_match_bruteforce() {
     }
     let fraction = matching as f64 / birds as f64;
     eprintln!(
-        "# grid vs brute force: {matching}/{birds} birds match ({:.2} %), \
-         {count_mismatches} neighbour-count mismatches, worst steering rel error {worst_rel:.2e}",
+        "# {label} vs brute force: {matching}/{birds} birds match ({:.2} %), \
+         {count_mismatches} neighbour-count mismatches, worst steering rel error {worst_rel:.2e}, \
+         {wide} queries on the fallback walk",
         fraction * 100.0
     );
     assert!(
         fraction >= 0.99,
-        "only {:.2} % of neighbour sets matched brute force, under the 99 % target",
+        "only {:.2} % of neighbour sets matched brute force (the {label} walk), \
+         under the 99 % target",
         fraction * 100.0
     );
+    wide
 }
 
 /// `|a - b| / |b|`, with a floor so a near-zero force is not a pure ratio.

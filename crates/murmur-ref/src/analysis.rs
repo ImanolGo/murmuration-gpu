@@ -217,6 +217,23 @@ fn mean(values: impl Iterator<Item = f32>) -> f32 {
     }
 }
 
+/// Fraction of birds in the largest single-link cluster at radius `r` \[m\].
+///
+/// This is exactly the value [`compute`] reports as `largest_cluster_fraction`
+/// (same function, same grid), packed behind one call so a caller that needs
+/// only this guard can measure it without paying for the whole metric set. At
+/// a large, dense flock [`compute`] is dominated by its 15 m nearest-neighbour
+/// scan (up to `N²` distance tests), while the 5 m cluster is one order of
+/// magnitude cheaper; the GPU coherence run uses this to stay feasible.
+pub fn cluster_fraction(pos: &[Vec3], r: f32) -> f32 {
+    if pos.is_empty() {
+        return 0.0;
+    }
+    let mut grid = Grid::new(GRID_CELL);
+    grid.rebuild(pos);
+    largest_cluster(pos, &grid, r)
+}
+
 /// Fraction of birds in the largest connected component when two birds are
 /// linked if they are within `r` metres.
 fn largest_cluster(pos: &[Vec3], grid: &Grid, r: f32) -> f32 {

@@ -19,6 +19,15 @@ use crate::params::*;
 use crate::social;
 use crate::state::{Bird, Snapshot};
 
+/// The bird count the model's initial cloud is sized for: the default of the
+/// sibling terminal version's `--analyze`. See [`World::new_density_scaled`].
+pub const CLOUD_REFERENCE_BIRDS: f32 = 2000.0;
+
+/// The radius of the model's initial cloud at [`CLOUD_REFERENCE_BIRDS`] \[m\].
+/// [`World::new`] uses it directly; `--analyze`'s large-N runs scale it with
+/// `n^(1/3)` to hold the cloud's density (see `docs/model.md`).
+pub const CLOUD_RADIUS: f32 = 18.0;
+
 /// The flock and its environment.
 pub struct World {
     /// Simulated time \[s\].
@@ -76,6 +85,14 @@ impl World {
     /// Creates a compact, slightly flattened flock near the roost edge, nearly
     /// aligned at cruise speed. The social and return rules develop its display.
     pub fn new(n: usize, seed: u64) -> Self {
+        Self::with_cloud_radius(n, seed, CLOUD_RADIUS)
+    }
+
+    /// Like [`World::new`] but with the initial cloud's radius chosen by the
+    /// caller. The random draw order is unchanged, so [`World::new`] stays
+    /// byte-for-byte the model's initial condition; this exists for
+    /// [`World::new_density_scaled`].
+    pub fn with_cloud_radius(n: usize, seed: u64, cloud_radius: f32) -> Self {
         let z0 = Z0;
         let mut rng = ChaCha8Rng::seed_from_u64(seed);
         let mut position = Vec::with_capacity(n);
@@ -91,7 +108,7 @@ impl World {
         let centre = Vec3::new(outward.x * 140.0, outward.y * 140.0, z0);
         for i in 0..n {
             let dir = social::random_unit(&mut rng);
-            let rad = 18.0 * rng.random::<f32>().cbrt();
+            let rad = cloud_radius * rng.random::<f32>().cbrt();
             position.push(centre + Vec3::new(dir.x * rad, dir.y * rad, dir.z * rad * 0.4));
             // A compact, uniform-velocity flock already near the roost edge, so
             // it does not beeline across the whole display area first.
@@ -130,6 +147,21 @@ impl World {
             grid,
             seed,
         }
+    }
+
+    /// A world whose initial cloud has the same *density* as the model's at its
+    /// design size ([`CLOUD_REFERENCE_BIRDS`]), by growing the cloud radius
+    /// with `n^(1/3)`. Used by the headless `--analyze` run for large flocks.
+    ///
+    /// The model's initial condition is a fixed 18 m cloud (see [`CLOUD_RADIUS`]),
+    /// which is right for the few thousand birds the published version runs.
+    /// At 100,000 birds it is ~50× denser than at its design size: the first
+    /// `decide` then scans tens of thousands of candidates per bird and the
+    /// driver loses the device. Scaling the radius keeps the cloud's shape and
+    /// density; the model's own dynamics then evolve it. See `docs/model.md`.
+    pub fn new_density_scaled(n: usize, seed: u64) -> Self {
+        let scale = (n as f32 / CLOUD_REFERENCE_BIRDS).max(1.0).cbrt();
+        Self::with_cloud_radius(n, seed, CLOUD_RADIUS * scale)
     }
 
     /// Starts a new evening of `minutes` minutes, from an empty sky.

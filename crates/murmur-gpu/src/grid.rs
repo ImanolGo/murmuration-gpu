@@ -24,6 +24,7 @@ use wgpu::{
     ShaderSource,
 };
 
+use crate::BIRD_WGSL;
 use crate::device::Gpu;
 use crate::pass::{Timeline, dispatch};
 
@@ -36,6 +37,27 @@ const GRID_WGSL: &str = include_str!("../shaders/grid.wgsl");
 const MIN_BUCKETS: u32 = 1 << 16;
 /// Largest bucket table: the two-level scan scans at most this many blocks.
 const MAX_BUCKETS: u32 = 1 << 22;
+
+/// The GPU grid's cell size \[m\].
+///
+/// The oracle's `neighbours::Grid` uses `params::GRID_CELL = 4.0 m`, but the
+/// cell size is only an acceleration parameter: `for_each_within` and the
+/// shader's `gather_grid` both keep a candidate only after an exact distance
+/// check, so any cell size returns the same neighbour set. Phase 3 tied the two
+/// to `GRID_CELL`; phase 4 sizes the GPU cell against the flock instead.
+///
+/// 4 m is far too coarse for the model's own settled flocks at scale: the
+/// adaptive radius `R` shrinks as `n` grows (≈1.4 m at 2,000 birds, under 1 m
+/// at 100,000). A query walks every cell the radius overlaps
+/// ([`murmur_ref::neighbours::Grid::for_each_within`]), so at `R ≈ 0.9 m` a 4 m
+/// cell makes a bird scan cells covering a few hundred m³ to find the half-dozen
+/// neighbours inside the radius, while a 1 m cell scans only a few tens m³ —
+/// roughly an order of magnitude fewer candidates. `decide` then no longer
+/// dominates and the 100,000-bird run is feasible. The benchmark's synthetic
+/// flock has only ~7 neighbours per bird, so it cannot show this; the cell
+/// matters on the model's own dense flocks. Phase 9 will size it against the
+/// benchmark; it is a performance knob, never a model change.
+pub const CELL: f32 = 1.0;
 
 /// Threads per workgroup and buckets per scan block, matching `grid.wgsl`.
 const WG: u32 = 256;
@@ -88,7 +110,7 @@ impl Grid {
         let device = &gpu.device;
         let buckets = buckets_for(n);
         let blocks = buckets.div_ceil(BLOCK);
-        let source = format!("{COMMON_WGSL}\n{GRID_WGSL}");
+        let source = format!("{COMMON_WGSL}\n{BIRD_WGSL}\n{GRID_WGSL}");
         let module = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("grid"),
             source: ShaderSource::Wgsl(source.into()),

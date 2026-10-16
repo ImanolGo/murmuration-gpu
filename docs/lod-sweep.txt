@@ -1,0 +1,58 @@
+# murmuration-gpu --lod-sweep 640x480 rho 0.25..12 step 0.25
+# adapter "NVIDIA GeForce GTX 1650 with Max-Q Design" on Vulkan (DiscreteGpu), driver "NVIDIA" 615.78.08
+# exposure fixed at 1.000 (the floor a dense flock settles on)
+#   rho  level      ink   d(ink)   change  sparkle
+#   0.25  s        0.01    +0.00     0.00        0
+#   0.50  s        0.01    +0.01     0.01        0
+#   0.75  s        0.05    +0.04     0.04        0
+#   1.00  s        0.10    +0.05     0.05        0
+#   1.25  s        0.16    +0.07     0.07        0
+#   1.50  i        0.17    +0.01     0.01        0
+#   1.75  i        0.28    +0.11     0.11        0
+#   2.00  i        0.41    +0.13     0.13        0
+#   2.25  i        0.55    +0.15     0.15        0
+#   2.50  i        0.71    +0.16     0.16        0
+#   2.75  i        0.89    +0.18     0.18        0
+#   3.00  i        1.09    +0.20     0.20        0
+#   3.25  i        1.30    +0.21     0.21        0
+#   3.50  i        1.52    +0.21     0.21        0
+#   3.75  i        1.76    +0.24     0.24        0
+#   4.00  i        2.01    +0.25     0.25        0
+#   4.25  i        2.29    +0.28     0.28        0
+#   4.50  i        2.58    +0.29     0.29        0
+#   4.75  i        2.88    +0.31     0.31        0
+#   5.00  m+i      3.20    +0.32     0.32        0
+#   5.25  m+i      3.53    +0.33     0.35        0
+#   5.50  m+i      3.93    +0.40     0.58        4
+#   5.75  m+i      4.03    +0.10     0.59        4
+#   6.00  m+i      3.80    -0.24     0.64        0
+#   6.25  m+i      3.25    -0.55     0.68        0
+#   6.50  m+i      3.02    -0.23     1.01        1
+#   6.75  m+i      2.50    -0.51     0.54        0
+#   7.00  m        2.30    -0.21     0.21        0
+#   7.25  m        2.30    +0.00     0.00        0
+#   7.50  m        2.76    +0.46     0.46        1
+#   7.75  m        2.76    +0.00     0.00        0
+#   8.00  m        2.76    +0.00     0.00        0
+#   8.25  m        2.76    +0.00     0.00        0
+#   8.50  m        2.76    +0.00     0.00        0
+#   8.75  m        3.68    +0.92     0.92        2
+#   9.00  m        3.68    +0.00     0.00        0
+#   9.25  m        4.13    +0.46     0.46        1
+#   9.50  m        4.59    +0.46     0.46        1
+#   9.75  m        4.59    +0.00     0.00        0
+#  10.00  m        5.51    +0.92     0.92        2
+#  10.25  m        4.59    -0.92     0.92        2
+#  10.50  m        5.05    +0.46     0.46        1
+#  10.75  m        5.05    +0.00     0.00        0
+#  11.00  m        5.51    +0.46     0.46        1
+#  11.25  m        5.51    +0.00     0.00        0
+#  11.50  m        5.97    +0.46     0.46        1
+#  11.75  m        5.97    +0.00     0.00        0
+#  12.00  m        5.97    +0.00     0.00        0
+# mesh cross-fade [5.00, 7.00] px: worst step 1.01 black px at rho 6.50 (1 pixels over 16)
+# control: growth of the same bird over [.. 5.00] and [7.00 .. 9.00]: worst 0.92 black px (2 pixels over 16)
+# threshold steps are 1.10x the control steps; no step at the mesh threshold is a jump
+# splat/impostor at 1.50 px: step 0.13 black px at rho 2.00 (0 pixels over 16), control 0.25; no step is a jump
+# ink over the sweep 0.01 black px (rho 0.25) -> 5.97 (rho 12); across the cross-fade 3.20 [m+i] -> 2.30 [m]
+# the cross-fade moves the ink 3.20 -> 2.30 black px (1.39x) over 2.0 px of growth, spread over 8 steps of 0.25 px

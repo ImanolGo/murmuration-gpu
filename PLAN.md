@@ -383,6 +383,41 @@ claimed, not image equality. Long-run elongation stays a known gap.
 obvious shimmer in a static camera shot of a distant flock; frame time at
 1M birds reported.
 
+**Met (2026-10-16), all three criteria measured.** Phase 6 lives in
+`crates/murmur-render` (`mesh.rs`, shaders `lod.wgsl`, `bird_pass.wgsl`,
+`bird_mesh.wgsl`, `impostor.wgsl`, `taa.wgsl`, the rewritten `coverage.wgsl`,
+`scene.wgsl`) and is driven by the app's `--capture DIR` and `--lod-sweep`
+modes; the deviations from the reference renderer are in `docs/model.md`
+("Phase 6 adaptations") and the measurements in `docs/progress.md` (phase 6).
+
+- **No popping.** `docs/lod-sweep.txt` sweeps one bird's projected wingspan from
+  `0.25` to `12 px` in `0.25 px` steps with the accumulation and jitter off, so
+  each step isolates the level change. The mesh cross-fade's worst step is
+  `1.01` black px against a `0.92` control — the same bird growing the same
+  amount away from a threshold — i.e. **1.10×**, under the stated `2×` jump
+  threshold; the `1.5 px` splat switch is `0.13` vs `0.25`. `docs/flypast.mp4`
+  records the acceptance fly-past (`--birds 20000`, lens zooming `1.00 → 0.35`):
+  across it the LOD counts go `mesh=0 impostor=20000 splat=0` →
+  `mesh=20000 impostor=0 splat=0`, so every bird crosses the mesh threshold
+  within the recording, and the frame-to-frame change shows no spike. The one
+  change the cross-fade carries is the bird *thinning* as it resolves (the mesh
+  is a silhouette, the splat an optically-thin disc): the ink moves `3.20 → 2.30`
+  black px over the band, gradually over eight steps (`docs/model.md`), and the
+  flock's total darkening is unchanged to better than 1 % (20k still: 150.00 →
+  148.96; 1M still: 120.22 → 119.90).
+- **No obvious shimmer.** `docs/shimmer.mp4` is a frozen, four-times-wider (so
+  sub-pixel) flock with the temporal accumulation on and off: the raw
+  frame-to-frame change is `293.8` black px/frame, accumulated `68.5` — **77 %
+  removed**. The moving fly-past is `75 %`. `--still` also converges the
+  accumulation over 24 jittered samples, which is why `docs/still-2k-mesh.png`
+  is clean.
+- **Frame time at 1M.** GPU timestamps (`renderer.frame_times_ms`), GTX 1650
+  Max-Q, driver 615.78.08, Vulkan, `1280×720`: **`12.19 ms/frame`** at 1,000,000
+  birds (`birds 11.21 ms` of it; `mesh=190 impostor=554516 splat=445370` — a
+  settled 1M flock is sub-pixel almost everywhere). 20,000 birds: `0.84 ms`;
+  2,000 birds (all mesh): `0.47 ms`. The still that reached the 1M frame cost
+  `3484 s` of simulation (the phase-5 cost), not a render cost.
+
 ## Phase 7 — Falcon and agitation
 
 - Falcon with patrol, climb, dive and retreat, autonomous or mouse-steered.

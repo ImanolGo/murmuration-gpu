@@ -34,12 +34,16 @@ use std::io::{self, Write};
 use std::sync::Arc;
 use std::time::Instant;
 
+use bytemuck::Zeroable;
+use glam::Vec3;
+use murmur_gpu::bird::Bird;
 use murmur_gpu::device::{self, DeviceError, Gpu};
 use murmur_gpu::sim::Sim;
 use murmur_gpu::{FLAP_AMPLITUDE, Turning, World, analyze, bench, coherence, parity};
 use murmur_render::camera::{Camera, FlockView};
+use murmur_render::mesh::WINGSPAN;
 use murmur_render::png;
-use murmur_render::renderer::{Renderer as FrameRenderer, Scene};
+use murmur_render::renderer::{LOD_LEVELS, Renderer as FrameRenderer, Scene, TIMESTAMP_SLOTS};
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -67,6 +71,14 @@ struct Args {
     /// Render one still frame of the flock to this PNG path instead of opening
     /// the window.
     still: Option<String>,
+    /// Capture a frame sequence into this directory (the phase-6 fly-past
+    /// recording and the shimmer statistic).
+    capture: Option<String>,
+    /// Sweep one bird across every LOD threshold and print the transition
+    /// measurement instead of opening the window.
+    lod_sweep: bool,
+    /// Frames in a `--capture` sequence.
+    frames: u32,
     /// Bank model the shader runs (base or inertial).
     turning: Turning,
     /// Number of birds.
@@ -92,6 +104,9 @@ impl Default for Args {
             extended: false,
             coherence: None,
             still: None,
+            capture: None,
+            lod_sweep: false,
+            frames: 120,
             turning: Turning::Base,
             birds: 2000,
             birds_given: false,
@@ -118,6 +133,9 @@ fn parse_args() -> Result<Args, String> {
                 args.coherence = Some(value(&mut it, "--coherence")?.parse().map_err(err)?);
             }
             "--still" => args.still = Some(value(&mut it, "--still")?),
+            "--capture" => args.capture = Some(value(&mut it, "--capture")?),
+            "--lod-sweep" => args.lod_sweep = true,
+            "--frames" => args.frames = value(&mut it, "--frames")?.parse().map_err(err)?,
             "--turning" => {
                 let value = value(&mut it, "--turning")?;
                 args.turning = match value.as_str() {
@@ -137,8 +155,9 @@ fn parse_args() -> Result<Args, String> {
             "-h" | "--help" => {
                 println!(
                     "murmuration-gpu [--parity | --bench | --analyze SECONDS | \
-                     --coherence SECONDS | --still PATH] [--birds N] \
-                     [--seed S] [--seconds T] [--seeds K] [--steps N] [--extended] \
+                     --coherence SECONDS | --still PATH | --capture DIR | \
+                     --lod-sweep] [--birds N] [--seed S] [--seconds T] \
+                     [--seeds K] [--steps N] [--frames N] [--extended] \
                      [--turning base|inertial]"
                 );
                 std::process::exit(0);
@@ -379,7 +398,13 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
     const DT: f32 = 1.0 / 30.0;
 
     let started = Instant::now();
-    let gpu = open()?;
+    // The frame time is an acceptance measurement, so ask for the timestamp
+    // feature; fall back to the plain device (and say the time is unmeasured)
+    // when the adapter cannot write stamps.
+    let gpu = match open_timed() {
+        Ok(gpu) => gpu,
+        Err(_) => open()?,
+    };
     let info = gpu.info();
     println!(
         "# murmuration-gpu --still {path} birds={} seed={} seconds={} {WIDTH}x{HEIGHT}",
@@ -412,7 +437,7 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
     // display-encoded bytes the PNG needs directly.
     let mut renderer =
         FrameRenderer::new(&gpu, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8UnormSrgb)?;
-    renderer.set_birds(&gpu, sim.bird_buffer());
+    renderer.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
     let target = renderer.create_target(&gpu, WIDTH, HEIGHT);
 
     let mut scene = Scene::from_camera(
@@ -425,12 +450,16 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
         sim.time(),
     );
     // The first frame fixes the exposure from the flock's 80th-percentile
-    // optical depth; the rest let it settle before the captured frame.
-    for _ in 0..4 {
+    // optical depth; the rest let it settle, and let the temporal accumulation
+    // average the jittered samples of the frozen scene.
+    const SETTLE: u32 = 24;
+    for frame in 0..SETTLE {
         scene.exposure = renderer.exposure();
         renderer.set_scene(&gpu, scene);
+        renderer.set_history_weight(Some(1.0 / (frame as f32 + 1.0)));
         renderer.render(&gpu, &target.view, args.birds as u32, DT);
     }
+    renderer.set_history_weight(None);
 
     let rgba = renderer.read_target(&gpu, &target, WIDTH, HEIGHT);
     let rgb: Vec<u8> = rgba
@@ -441,6 +470,17 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
         .collect();
     png::write_rgb(path, WIDTH, HEIGHT, &rgb)?;
     println!("# exposure {:.3}", renderer.exposure());
+    let lod = renderer.lod_counts(&gpu);
+    println!(
+        "# lod mesh={} impostor={} splat={} (birds {})",
+        lod[0], lod[1], lod[2], args.birds
+    );
+    // The frame time is a GPU measurement or nothing at all (AGENTS.md): it
+    // comes from the renderer's timestamp query, never from a wall clock.
+    match renderer.frame_times_ms(&gpu) {
+        Some(times) => println!("# render {}", timing_line(&times)),
+        None => println!("# render unmeasured: this adapter cannot write timestamps"),
+    }
     // How long the still cost is part of the record: at a million birds this is
     // a long simulation, not a screenshot.
     let wall = started.elapsed().as_secs_f64();
@@ -450,6 +490,675 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
     );
     println!("# wrote {path}");
     Ok(())
+}
+
+/// Opens a headless device that can also write GPU timestamps, or explains why
+/// it could not. Every frame time this app reports comes from a timestamp query
+/// (AGENTS.md), so the render modes ask for the feature up front and say so when
+/// the adapter cannot provide it.
+fn open_timed() -> Result<Gpu, Box<dyn Error>> {
+    match device::headless_with(
+        wgpu::PowerPreference::HighPerformance,
+        wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS,
+    ) {
+        Ok(gpu) => Ok(gpu),
+        Err(DeviceError::NoAdapter(error)) => {
+            Err(format!("no suitable GPU adapter: {error}").into())
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+/// The frame's GPU timings, in the order the passes run. Slot 0 is the frame's
+/// start, so this is a frame time, not a wall clock.
+fn timing_line(times: &[f32; TIMESTAMP_SLOTS]) -> String {
+    format!(
+        "total {:.2} ms/frame: lod {:.2}, birds {:.2}, exposure {:.2}, taa {:.2}, tonemap {:.2}",
+        times[5],
+        times[1],
+        times[2] - times[1],
+        times[3] - times[2],
+        times[4] - times[3],
+        times[5] - times[4],
+    )
+}
+
+/// What a frame-to-frame change amounts to, in equivalent black pixels, and the
+/// number of pixels whose worst channel moved by more than 16.
+///
+/// Black pixels are the unit: one fully dark pixel of the whole frame counts as
+/// one. A bird 12 px across is worth about ten of them, so a change of one or
+/// two is a small fraction of a bird and a change of ten is a whole one. This is
+/// the shimmer statistic: a bird crossing a pixel boundary between two frames
+/// shows up here whether or not the eye would call it a flicker.
+fn change(a: &[u8], b: &[u8]) -> (f32, u32) {
+    const SPARKLE: i32 = 16;
+    let mut sum = 0u64;
+    let mut sparkles = 0u32;
+    for (pa, pb) in a.as_chunks::<4>().0.iter().zip(b.as_chunks::<4>().0) {
+        let mut worst = 0;
+        for k in 0..3 {
+            let d = (i32::from(pa[k]) - i32::from(pb[k])).abs();
+            sum += d as u64;
+            worst = worst.max(d);
+        }
+        if worst > SPARKLE {
+            sparkles += 1;
+        }
+    }
+    // Absorbed light over all three channels, in black pixels: 3 channels of a
+    // fully dark pixel are worth 3 x 255.
+    (sum as f32 / (3.0 * 255.0), sparkles)
+}
+
+/// The light a frame absorbs against a bird-free `background`, in equivalent
+/// black pixels: the bird's total ink on the screen.
+fn ink(background: &[u8], frame: &[u8]) -> f32 {
+    let mut sum = 0u64;
+    for (b, f) in background
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(frame.as_chunks::<4>().0)
+    {
+        for k in 0..3 {
+            sum += u64::from(b[k].saturating_sub(f[k]));
+        }
+    }
+    sum as f32 / (3.0 * 255.0)
+}
+
+/// Which LOD levels drew a bird, as `m`, `i`, `s` joined by `+`.
+fn level_tag(counts: &[u32; LOD_LEVELS]) -> String {
+    let mut tag = String::new();
+    for (count, name) in counts.iter().zip(["m", "i", "s"]) {
+        if *count > 0 {
+            if !tag.is_empty() {
+                tag.push('+');
+            }
+            tag.push_str(name);
+        }
+    }
+    if tag.is_empty() {
+        tag.push('-');
+    }
+    tag
+}
+
+/// One `--capture` pass: the per-frame shimmer statistic and the GPU render
+/// time, with the PNGs written when `dir` is given.
+struct CaptureReport {
+    /// Change against the previous frame, per frame, in black pixels.
+    diffs: Vec<f32>,
+    /// Pixels whose worst channel moved by more than 16, per frame.
+    sparkles: Vec<u32>,
+    /// GPU render time of each frame, from its timestamps.
+    render_ms: Vec<f32>,
+    /// LOD instance counts of the first and last frame: `(first, last)`.
+    lod: ([u32; LOD_LEVELS], [u32; LOD_LEVELS]),
+}
+
+impl CaptureReport {
+    fn mean(values: &[f32]) -> f32 {
+        values.iter().sum::<f32>() / values.len().max(1) as f32
+    }
+
+    fn worst(values: &[f32]) -> f32 {
+        values.iter().copied().fold(0.0f32, f32::max)
+    }
+
+    fn line(&self, name: &str) -> String {
+        let sparkles: Vec<f32> = self.sparkles.iter().map(|&s| s as f32).collect();
+        let render = if self.render_ms.is_empty() {
+            "unmeasured".to_string()
+        } else {
+            format!("{:.2} ms/frame", Self::mean(&self.render_ms))
+        };
+        format!(
+            "shimmer {name}: change {:.1} black px/frame (worst {:.1}), over-16 pixels {:.0}/frame, \
+             lod {} -> {}, render {render}",
+            Self::mean(&self.diffs),
+            Self::worst(&self.diffs),
+            Self::mean(&sparkles),
+            lod_line(&self.lod.0),
+            lod_line(&self.lod.1),
+        )
+    }
+}
+
+/// `mesh=… impostor=… splat=…`, the LOD instance counts of one frame.
+fn lod_line(counts: &[u32; LOD_LEVELS]) -> String {
+    format!(
+        "mesh={} impostor={} splat={}",
+        counts[0], counts[1], counts[2]
+    )
+}
+
+/// What a `--capture` pass is: the moving flock or the frozen one, with the
+/// temporal accumulation on or off, and whether it writes the recording.
+#[derive(Clone)]
+struct CapturePass {
+    /// `true` for the static camera on a distant flock.
+    frozen: bool,
+    /// `true` to accumulate, `false` to show the raw frames.
+    taa: bool,
+    /// The directory the frames are written to, for the recorded pass.
+    dir: Option<String>,
+}
+
+impl CapturePass {
+    fn name(&self) -> &'static str {
+        match (self.frozen, self.taa) {
+            (false, true) => "fly-past taa",
+            (false, false) => "fly-past raw",
+            (true, true) => "static   taa",
+            (true, false) => "static   raw",
+        }
+    }
+}
+
+/// The recorded fly-past and the shimmer statistics (PLAN.md phase 6
+/// acceptance).
+///
+/// Two sequences are captured, each twice, once with the temporal accumulation
+/// on and once without.
+///
+/// * The fly-past: the flock is simulated and framed, and the lens zooms in over
+///   the capture, so the flock grows and every bird crosses every LOD threshold
+///   within the recording. That is what makes a pop visible if there is one, and
+///   it is the "recorded fly-past" the acceptance asks for.
+/// * The static camera on a distant flock: the same flock frozen, framed four
+///   times wider so the birds are sub-pixel, and sampled frame after frame with
+///   the temporal-AA jitter moving. Nothing in the scene moves, so every
+///   frame-to-frame difference is a sampling artefact of sub-pixel birds — the
+///   shimmer the acceptance asks about, isolated from motion.
+///
+/// The frames written to `dir` are the accumulated fly-past.
+fn run_capture(args: &Args, dir: &str, seconds: f32) -> Result<(), Box<dyn Error>> {
+    const WIDTH: u32 = 960;
+    const HEIGHT: u32 = 540;
+    let gpu = open_timed()?;
+    let info = gpu.info();
+    println!(
+        "# murmuration-gpu --capture {dir} birds={} seed={} seconds={} frames={} {WIDTH}x{HEIGHT}",
+        args.birds, args.seed, seconds, args.frames
+    );
+    println!(
+        "# adapter \"{}\" on {:?} ({:?}), driver \"{}\" {}",
+        info.name, info.backend, info.device_type, info.driver, info.driver_info
+    );
+    println!(
+        "# the moving flock steps six integration steps (0.03 s) per frame, played back at \
+         30 fps; the lens zooms 1.00 -> {CAPTURE_ZOOM:.2}, so every bird grows {:.1}x and \
+         crosses every LOD threshold in view",
+        1.0 / CAPTURE_ZOOM
+    );
+
+    let started = Instant::now();
+    // The static passes get their own directories: their frames are the two
+    // halves of the shimmer comparison.
+    let static_taa = format!("{dir}/static-taa");
+    let static_raw = format!("{dir}/static-raw");
+    for path in [dir, static_taa.as_str(), static_raw.as_str()] {
+        std::fs::create_dir_all(path)?;
+    }
+    let passes = [
+        CapturePass {
+            frozen: false,
+            taa: true,
+            dir: Some(dir.to_string()),
+        },
+        CapturePass {
+            frozen: false,
+            taa: false,
+            dir: None,
+        },
+        CapturePass {
+            frozen: true,
+            taa: true,
+            dir: Some(static_taa),
+        },
+        CapturePass {
+            frozen: true,
+            taa: false,
+            dir: Some(static_raw),
+        },
+    ];
+    let mut reports = Vec::new();
+    for pass in passes {
+        let report = capture_pass(&gpu, args, seconds, pass.clone())?;
+        println!("# {}", report.line(pass.name()));
+        reports.push(report);
+    }
+
+    let ratio = |with: &CaptureReport, without: &CaptureReport| {
+        CaptureReport::mean(&with.diffs) / CaptureReport::mean(&without.diffs).max(1e-6)
+    };
+    println!(
+        "# temporal accumulation removes {:.0}% of the in-motion change ({:.2}x) and {:.0}% of \
+         the static flock's sub-pixel change ({:.2}x)",
+        100.0 * (1.0 - ratio(&reports[0], &reports[1])),
+        ratio(&reports[0], &reports[1]),
+        100.0 * (1.0 - ratio(&reports[2], &reports[3])),
+        ratio(&reports[2], &reports[3]),
+    );
+    println!(
+        "# {} frames written to {dir} in {:.0}s",
+        args.frames,
+        started.elapsed().as_secs_f64()
+    );
+    Ok(())
+}
+
+/// One pass over the capture frames, from a fresh, identically seeded
+/// simulation, so the two accumulated-or-not passes see the same frames.
+fn capture_pass(
+    gpu: &Gpu,
+    args: &Args,
+    seconds: f32,
+    pass: CapturePass,
+) -> Result<CaptureReport, Box<dyn Error>> {
+    const WIDTH: u32 = 960;
+    const HEIGHT: u32 = 540;
+    const DT: f32 = 1.0 / 30.0;
+    // One frame of the recording is six integration steps (0.03 s), played back
+    // at 30 fps.
+    const STEPS: u32 = 6;
+    // The static flock is framed this many times wider, so its birds are
+    // sub-pixel: a distant flock.
+    const DISTANT: f32 = 4.0;
+    // Enough frames to see the jitter's whole cycle and to let the accumulation
+    // converge.
+    const STATIC_FRAMES: u32 = 30;
+
+    let mut world = World::new_density_scaled(args.birds, args.seed);
+    world.turning = args.turning;
+    let evening = world.evening();
+    let mut sim = Sim::from_snapshot(gpu, &world.snapshot());
+    sim.advance_seconds(gpu, seconds)?;
+
+    let flock = World::restore(&sim.snapshot(gpu));
+    let mut camera = Camera::new();
+    camera.update(
+        &FlockView {
+            positions: &flock.position,
+            velocities: &flock.velocity,
+            time: sim.time(),
+        },
+        DT,
+        WIDTH as f32 / HEIGHT as f32,
+    );
+
+    let mut renderer = FrameRenderer::new(gpu, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+    renderer.set_birds(gpu, sim.bird_buffer(), sim.len() as u32);
+    let target = renderer.create_target(gpu, WIDTH, HEIGHT);
+    let mut scene = Scene::from_camera(
+        &camera,
+        WIDTH,
+        HEIGHT,
+        evening,
+        renderer.exposure(),
+        FLAP_AMPLITUDE,
+        sim.time(),
+    );
+    // The exposure is part of the model's look: settle it before the recording
+    // starts, so the frames differ by the birds and not by a drifting exposure.
+    for _ in 0..12 {
+        scene.exposure = renderer.exposure();
+        renderer.set_scene(gpu, scene);
+        renderer.render(gpu, &target.view, sim.len() as u32, DT);
+    }
+
+    let mut report = CaptureReport {
+        diffs: Vec::new(),
+        sparkles: Vec::new(),
+        render_ms: Vec::new(),
+        lod: ([0; LOD_LEVELS], [0; LOD_LEVELS]),
+    };
+    let frames = if pass.frozen {
+        STATIC_FRAMES
+    } else {
+        args.frames
+    };
+    // The static pass looks at the same flock from the same camera, four times
+    // wider, with the lens and everything else fixed.
+    let mut frozen_scene = {
+        let mut frozen = scene;
+        frozen.fov *= DISTANT;
+        frozen
+    };
+    let mut previous: Option<Vec<u8>> = None;
+    for frame in 0..frames {
+        if pass.frozen {
+            // Nothing moves: the same flock, the same camera, the same lens. What
+            // is left between frames is the jitter's sampling of sub-pixel
+            // shapes.
+            frozen_scene.exposure = renderer.exposure();
+            scene = frozen_scene;
+        } else {
+            sim.advance(gpu, STEPS);
+            let flock = World::restore(&sim.snapshot(gpu));
+            camera.update(
+                &FlockView {
+                    positions: &flock.position,
+                    velocities: &flock.velocity,
+                    time: sim.time(),
+                },
+                DT,
+                WIDTH as f32 / HEIGHT as f32,
+            );
+            scene = Scene::from_camera(
+                &camera,
+                WIDTH,
+                HEIGHT,
+                evening,
+                renderer.exposure(),
+                FLAP_AMPLITUDE,
+                sim.time(),
+            );
+            let t = if frames > 1 {
+                frame as f32 / (frames - 1) as f32
+            } else {
+                0.0
+            };
+            scene.fov *= 1.0 - (1.0 - CAPTURE_ZOOM) * t;
+        }
+        renderer.set_scene(gpu, scene);
+        renderer.set_history_weight(if pass.taa { None } else { Some(1.0) });
+        renderer.render(gpu, &target.view, sim.len() as u32, DT);
+        let counts = renderer.lod_counts(gpu);
+        if frame == 0 {
+            report.lod.0 = counts;
+        }
+        report.lod.1 = counts;
+        if let Some(times) = renderer.frame_times_ms(gpu) {
+            report.render_ms.push(times[TIMESTAMP_SLOTS - 1]);
+        }
+        let rgba = renderer.read_target(gpu, &target, WIDTH, HEIGHT);
+        if let Some(before) = &previous {
+            let (diff, sparkles) = change(before, &rgba);
+            report.diffs.push(diff);
+            report.sparkles.push(sparkles);
+        }
+        if let Some(dir) = &pass.dir {
+            let rgb: Vec<u8> = rgba
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .flat_map(|p| [p[0], p[1], p[2]])
+                .collect();
+            png::write_rgb(format!("{dir}/frame-{frame:04}.png"), WIDTH, HEIGHT, &rgb)?;
+        }
+        previous = Some(rgba);
+    }
+    Ok(report)
+}
+
+/// One row of the `--lod-sweep` table.
+struct SweepRow {
+    rho: f32,
+    tag: String,
+    /// The bird's ink in black pixels.
+    ink: f32,
+    /// The change against the previous row's frame, in black pixels.
+    diff: f32,
+    sparkle: u32,
+}
+
+/// The LOD transition measurement (PLAN.md phase 6 acceptance): one bird, its
+/// projected wingspan swept across every threshold, and what the picture does at
+/// each step.
+///
+/// The bird sits on the view axis and flies across the view, so it stays at the
+/// same screen point while ρ changes: the sky, the pose and the exposure are the
+/// same at every step, and the only thing that changes is the level the bird is
+/// drawn at. The temporal accumulation and the sample jitter are both off, so a
+/// step measures the level change and nothing else.
+///
+/// A bird that changes level must change the picture no more than growing by the
+/// same amount does. The verdict compares the worst step across a threshold with
+/// the worst step beside it, at the same sizes: the steps away from a threshold
+/// are what that growth costs, so a threshold step has to stay in the same
+/// league. The ink column is the bird's total darkening, which the shapes are
+/// not required to keep equal — the levels carry the same optical *mass*, and
+/// the reference's disc spreads it differently from a silhouette.
+fn run_lod_sweep(args: &Args) -> Result<(), Box<dyn Error>> {
+    const WIDTH: u32 = 640;
+    const HEIGHT: u32 = 480;
+    /// Focal length in pixels: fixed, so a distance is a projected size.
+    const FOCAL: f32 = 700.0;
+    const RHO_MIN: f32 = 0.25;
+    const RHO_MAX: f32 = 12.0;
+    const RHO_STEP: f32 = 0.25;
+    /// The control windows: steps of the same growth away from the thresholds.
+    const CONTROL: f32 = 2.0;
+    /// How many times a control step a threshold step may be before the change
+    /// counts as a jump rather than as growth. A step that moves the picture
+    /// twice as much as the same bird growing by the same amount elsewhere is
+    /// the point at which the eye reads a level change and not the bird.
+    const JUMP: f32 = 2.0;
+
+    let gpu = open_timed()?;
+    let info = gpu.info();
+    println!(
+        "# murmuration-gpu --lod-sweep {WIDTH}x{HEIGHT} rho {RHO_MIN}..{RHO_MAX} step {RHO_STEP}"
+    );
+    println!(
+        "# adapter \"{}\" on {:?} ({:?}), driver \"{}\" {}",
+        info.name, info.backend, info.device_type, info.driver, info.driver_info
+    );
+
+    // A camera whose focal length is fixed, looking up at 45 degrees, so the
+    // sweep is in projected size rather than in lens angle.
+    let mut camera = Camera::new();
+    camera.forward = Vec3::new(0.0, 0.702, 0.712).normalize();
+    camera.up = Vec3::new(0.0, -0.712, 0.702).normalize();
+    camera.right = camera.forward.cross(camera.up).normalize();
+    camera.fov = 2.0 * (HEIGHT as f32 * 0.5 / FOCAL).atan();
+    let eye = camera.eye;
+    let forward = camera.forward;
+    // The bird crosses the view at the observer's level: seen from below with
+    // its wings spread, which is how the flock is mostly seen, and with the same
+    // pose at every step.
+    let across = Vec3::new(0.0, 0.0, 1.0).cross(forward).normalize();
+
+    let mut world = World::new_density_scaled(1, args.seed);
+    world.turning = args.turning;
+    let evening = world.evening();
+
+    let mut bird = Bird::zeroed();
+    bird.flap_amp = 1.0;
+    bird.vel = (across * 8.0).to_array();
+    let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("lod-sweep: one bird"),
+        size: std::mem::size_of::<Bird>() as u64,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+
+    let mut renderer =
+        FrameRenderer::new(&gpu, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+    renderer.set_birds(&gpu, &buffer, 1);
+    renderer.set_jitter(Some([0.0, 0.0]));
+    let target = renderer.create_target(&gpu, WIDTH, HEIGHT);
+    let mut scene = Scene::from_camera(
+        &camera,
+        WIDTH,
+        HEIGHT,
+        evening,
+        renderer.exposure(),
+        FLAP_AMPLITUDE,
+        0.0,
+    );
+
+    // The bird is placed on the view axis at the distance its projected wingspan
+    // asks for: `rho = WINGSPAN * focal / depth`, the classifier's own formula.
+    let place = |bird: &mut Bird, rho: f32| {
+        bird.pos = (eye + forward * (WINGSPAN * FOCAL / rho)).to_array();
+    };
+
+    // The exposure is held at the floor a dense flock pins it to. A single bird
+    // cannot give the histogram a sensible 80th percentile, so letting the
+    // exposure adapt here would measure the exposure and not the levels.
+    renderer.set_exposure(murmur_render::renderer::EXPOSURE_MIN);
+    scene.exposure = renderer.exposure();
+    println!(
+        "# exposure fixed at {:.3} (the floor a dense flock settles on)",
+        renderer.exposure()
+    );
+
+    // The sky alone, for the ink measure: the bird pushed behind the observer,
+    // where no level draws it.
+    bird.pos = (eye - forward * 10.0).to_array();
+    gpu.queue
+        .write_buffer(&buffer, 0, bytemuck::bytes_of(&bird));
+    renderer.set_scene(&gpu, scene);
+    renderer.render(&gpu, &target.view, 1, 0.0);
+    let background = renderer.read_target(&gpu, &target, WIDTH, HEIGHT);
+
+    println!("#   rho  level      ink   d(ink)   change  sparkle");
+    let mut rows: Vec<SweepRow> = Vec::new();
+    let mut previous: Option<Vec<u8>> = None;
+    let mut rho = RHO_MIN;
+    while rho <= RHO_MAX + 1e-6 {
+        place(&mut bird, rho);
+        gpu.queue
+            .write_buffer(&buffer, 0, bytemuck::bytes_of(&bird));
+        renderer.set_scene(&gpu, scene);
+        renderer.set_history_weight(Some(1.0));
+        renderer.render(&gpu, &target.view, 1, 0.0);
+        let counts = renderer.lod_counts(&gpu);
+        let rgba = renderer.read_target(&gpu, &target, WIDTH, HEIGHT);
+        let ink = ink(&background, &rgba);
+        let (diff, sparkle) = match &previous {
+            Some(before) => change(before, &rgba),
+            None => (0.0, 0),
+        };
+        let tag = level_tag(&counts);
+        let d_ink = rows.last().map_or(0.0, |last| ink - last.ink);
+        println!("# {rho:6.2}  {tag:<6} {ink:6.2} {d_ink:+8.2} {diff:8.2} {sparkle:8}");
+        rows.push(SweepRow {
+            rho,
+            tag,
+            ink,
+            diff,
+            sparkle,
+        });
+        previous = Some(rgba);
+        rho += RHO_STEP;
+    }
+
+    // The mesh cross-fade, the hard splat/impostor threshold, and the control
+    // windows beside each: growth of the same bird, at the same sizes.
+    let mesh_lo = murmur_render::renderer::RHO_MESH - murmur_render::renderer::LOD_BAND;
+    let mesh_hi = murmur_render::renderer::RHO_MESH + murmur_render::renderer::LOD_BAND;
+    let splat = murmur_render::renderer::RHO_SPLAT;
+    let mesh_worst = worst_step(&rows, mesh_lo, mesh_hi);
+    let mesh_above = worst_step(&rows, mesh_hi, mesh_hi + CONTROL);
+    let mesh_below = worst_step(&rows, splat + RHO_STEP, mesh_lo);
+    let control = mesh_above.diff.max(mesh_below.diff);
+    let control_sparkle = if mesh_above.diff >= mesh_below.diff {
+        mesh_above.sparkle
+    } else {
+        mesh_below.sparkle
+    };
+    let splat_worst = worst_step(&rows, splat - RHO_STEP, splat + RHO_STEP);
+    let splat_above = worst_step(&rows, splat + RHO_STEP, splat + CONTROL + RHO_STEP);
+    let splat_below = worst_step(&rows, RHO_MIN, splat - RHO_STEP);
+    let splat_control = splat_above.diff.max(splat_below.diff);
+
+    println!(
+        "# mesh cross-fade [{mesh_lo:.2}, {mesh_hi:.2}] px: worst step {:.2} black px at rho {:.2} \
+         ({} pixels over 16)",
+        mesh_worst.diff, mesh_worst.rho, mesh_worst.sparkle
+    );
+    println!(
+        "# control: growth of the same bird over [.. {mesh_lo:.2}] and [{mesh_hi:.2} .. {:.2}]: \
+         worst {control:.2} black px ({control_sparkle} pixels over 16)",
+        mesh_hi + CONTROL,
+    );
+    println!(
+        "# threshold steps are {:.2}x the control steps; {}",
+        mesh_worst.diff / control.max(1e-6),
+        if mesh_worst.diff <= JUMP * control {
+            "no step at the mesh threshold is a jump"
+        } else {
+            "A STEP AT THE MESH THRESHOLD IS A JUMP"
+        }
+    );
+    println!(
+        "# splat/impostor at {splat:.2} px: step {:.2} black px at rho {:.2} ({} pixels over 16), \
+         control {splat_control:.2}; {}",
+        splat_worst.diff,
+        splat_worst.rho,
+        splat_worst.sparkle,
+        if splat_worst.diff <= JUMP * splat_control {
+            "no step is a jump"
+        } else {
+            "A STEP AT THE SPLAT THRESHOLD IS A JUMP"
+        }
+    );
+    // The levels the cross-fade runs between, and the mass argument for the ink
+    // it moves: the mesh is drawn by a silhouette whose mean projected area is
+    // `mesh::mean_projected_area()`, so at equal mass it concentrates the ink the
+    // reference's disc spreads out. That is the documented adaptation; this line
+    // is its size.
+    let at = |rho: f32| {
+        rows.iter()
+            .find(|r| r.rho >= rho)
+            .map_or((0.0, String::from("-")), |r| (r.ink, r.tag.clone()))
+    };
+    let (ink_lo, tag_lo) = at(mesh_lo);
+    let (ink_hi, tag_hi) = at(mesh_hi);
+    println!(
+        "# ink over the sweep {:.2} black px (rho {RHO_MIN}) -> {:.2} (rho {RHO_MAX}); across \
+         the cross-fade {ink_lo:.2} [{tag_lo}] -> {ink_hi:.2} [{tag_hi}]",
+        rows.first().map_or(0.0, |r| r.ink),
+        rows.last().map_or(0.0, |r| r.ink),
+    );
+    // What the fade does to the ink, and the reading of it. The reference's disc
+    // gives a resolved bird more ink than its own silhouette can hold, so a bird
+    // that resolves gets thinner: the mass is the same, the area is not.
+    // `docs/model.md` records the adaptation; this is its size, spread over the
+    // steps the bird takes to cross the band.
+    println!(
+        "# the cross-fade moves the ink {ink_lo:.2} -> {ink_hi:.2} black px ({:.2}x) over {:.1} px \
+         of growth, spread over {:.0} steps of {RHO_STEP:.2} px",
+        ink_lo / ink_hi.max(1e-6),
+        mesh_hi - mesh_lo,
+        (mesh_hi - mesh_lo) / RHO_STEP,
+    );
+    Ok(())
+}
+
+/// What a step did: the difference, where it ended, and the pixels it moved by
+/// more than 16.
+struct Step {
+    diff: f32,
+    rho: f32,
+    sparkle: u32,
+}
+
+/// The worst step difference whose ρ interval touches `[lo, hi]`, and the ρ it
+/// ended at. Row `i`'s difference is against row `i - 1`, so it belongs to the
+/// interval between them.
+fn worst_step(rows: &[SweepRow], lo: f32, hi: f32) -> Step {
+    let mut worst = Step {
+        diff: 0.0,
+        rho: 0.0,
+        sparkle: 0,
+    };
+    for pair in rows.windows(2) {
+        let (before, after) = (&pair[0], &pair[1]);
+        if before.rho <= hi && after.rho >= lo && after.diff > worst.diff {
+            worst = Step {
+                diff: after.diff,
+                rho: after.rho,
+                sparkle: after.sparkle,
+            };
+        }
+    }
+    worst
 }
 
 fn main() {
@@ -496,6 +1205,21 @@ fn main() {
         }
         return;
     }
+    if let Some(dir) = &args.capture {
+        let seconds = args.seconds as f32;
+        if let Err(error) = run_capture(&args, dir, seconds) {
+            eprintln!("murmuration-gpu: --capture failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if args.lod_sweep {
+        if let Err(error) = run_lod_sweep(&args) {
+            eprintln!("murmuration-gpu: --lod-sweep failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     let event_loop = EventLoop::new().expect("opening the window event loop");
     let mut app = App {
@@ -513,7 +1237,6 @@ struct App {
     args: Args,
     renderer: Option<Renderer>,
 }
-
 /// Window, surface, GPU, flock and renderer, wired together.
 struct Renderer {
     window: Arc<Window>,
@@ -534,6 +1257,11 @@ struct Renderer {
 /// The largest catch-up the window will simulate in one frame, so a stall does
 /// not turn into one enormous submission.
 const MAX_FRAME_STEPS: u32 = 40;
+
+/// How far the `--capture` lens zooms in over the recording: the framing field
+/// of view is scaled by this at the last frame, so the flock grows and every
+/// bird crosses every LOD threshold in view.
+const CAPTURE_ZOOM: f32 = 0.35;
 
 impl Renderer {
     /// Creates the window, the surface and the device, builds the flock and
@@ -576,7 +1304,7 @@ impl Renderer {
         let sim = Sim::from_snapshot(&gpu, &world.snapshot());
 
         let mut frame = FrameRenderer::new(&gpu, config.width, config.height, config.format)?;
-        frame.set_birds(&gpu, sim.bird_buffer());
+        frame.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
 
         Ok(Self {
             window,
@@ -666,7 +1394,8 @@ impl Renderer {
         );
 
         // The bird buffer ping-pongs each step, so re-point the coverage pass.
-        self.frame.set_birds(&self.gpu, self.sim.bird_buffer());
+        self.frame
+            .set_birds(&self.gpu, self.sim.bird_buffer(), self.sim.len() as u32);
         self.frame.set_scene(
             &self.gpu,
             Scene::from_camera(

@@ -23,8 +23,18 @@
 //! between the two.
 //!
 //! Phase 5 draws every bird with the sub-pixel bilinear / resolved Gaussian
-//! footprint of the reference's `render/splat.rs`; the mesh and LOD impostors
-//! are phase 6.
+//! footprint of the reference's `render/splat.rs`. Phase 6 puts three levels of
+//! bird in front of that: a [`mesh`](crate::mesh) for the nearest, the phase-5
+//! splat for the smallest, and a flapping impostor quad between them. A compute
+//! pass (`shaders/lod.wgsl`) classifies every bird by its projected wingspan and
+//! writes the instance lists that feed the three *indirect* draws, so the CPU
+//! never touches a bird. All three levels deposit the same optical mass `a·ρ²`,
+//! and the thresholds are cross-fades, so a bird that changes level keeps its
+//! darkness.
+//!
+//! Phase 6 also carries a short HDR history (TAA): every frame is sampled at a
+//! different sub-pixel offset and blended into the running image, so sub-pixel
+//! birds, whose centres cross pixel boundaries every frame, stop shimmering.
 
 use std::sync::mpsc;
 
@@ -36,14 +46,16 @@ use wgpu::{
     BindGroupLayoutEntry, BindingType, BlendComponent, BlendFactor, BlendOperation, BlendState,
     Buffer, BufferBindingType, BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites,
     CommandEncoderDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, FragmentState,
-    LoadOp, Operations, Origin3d, PipelineLayoutDescriptor, PrimitiveState,
+    LoadOp, Operations, Origin3d, PipelineLayoutDescriptor, PrimitiveState, QuerySet,
     RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
     ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TexelCopyBufferInfo,
     TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureView, VertexState,
+    TextureDimension, TextureFormat, TextureUsages, TextureView, VertexAttribute,
+    VertexBufferLayout, VertexFormat, VertexState, VertexStepMode,
 };
 
 use crate::camera::Camera;
+use crate::mesh;
 
 /// The HDR target format: the sky and the darkness it is multiplied by.
 pub const HDR_FORMAT: TextureFormat = TextureFormat::Rgba16Float;
@@ -61,7 +73,7 @@ const TARGET_TAU: f32 = 1.204;
 const EXPOSURE_TAU: f32 = 4.0;
 
 /// Bounds on the adaptive exposure.
-const EXPOSURE_MIN: f32 = 1.0;
+pub const EXPOSURE_MIN: f32 = 1.0;
 const EXPOSURE_MAX: f32 = 400.0;
 
 /// Histogram bins used to locate the 80th-percentile optical depth.
@@ -69,6 +81,20 @@ const BINS: usize = 256;
 
 /// Optical depth a full histogram bin range maps to.
 const TAU_MAX: f32 = 8.0;
+
+/// Time constant of the temporal accumulation \[s\]: the history keeps about
+/// `TAA_TAU` seconds of frames, short enough that the flock's own motion does not
+/// smear, long enough to quiet the wingbeat's 10 Hz flicker at 30 fps.
+const TAA_TAU: f32 = 0.1;
+
+/// Frames in the jitter sequence. Eight Halton offsets cover a pixel's area
+/// evenly enough that a still camera's picture converges in a few frames.
+const TAA_SAMPLES: u32 = 8;
+
+/// Frame-time probes: frame start, LOD classify, the bird pass, the exposure
+/// histogram, the temporal resolve, the tone map. Read back by
+/// [`Renderer::frame_times_ms`].
+pub const TIMESTAMP_SLOTS: usize = 6;
 
 /// The per-frame camera block, matching `Scene` in `shaders/scene.wgsl`.
 #[repr(C)]
@@ -89,6 +115,10 @@ pub struct Scene {
     pub flap_amplitude: f32,
     pub time: f32,
     pub _pad4: f32,
+    /// Sub-pixel offset of this frame's sample \[px\], for temporal AA.
+    pub jitter: [f32; 2],
+    pub _pad5: f32,
+    pub _pad6: f32,
 }
 
 impl Scene {
@@ -118,6 +148,9 @@ impl Scene {
             flap_amplitude,
             time,
             _pad4: 0.0,
+            jitter: [0.0, 0.0],
+            _pad5: 0.0,
+            _pad6: 0.0,
         }
     }
 }
@@ -143,18 +176,56 @@ pub struct Renderer {
     output_format: TextureFormat,
 
     sky: RenderPipeline,
+    mesh: RenderPipeline,
+    impostor: RenderPipeline,
     coverage: RenderPipeline,
     tonemap: RenderPipeline,
+    taa: RenderPipeline,
     exposure_pipeline: ComputePipeline,
+    lod_pipeline: ComputePipeline,
 
-    coverage_layout: BindGroupLayout,
+    bird_layout: BindGroupLayout,
+    lod_layout: BindGroupLayout,
     tonemap_layout: BindGroupLayout,
+    taa_layout: BindGroupLayout,
     exposure_layout: BindGroupLayout,
 
+    /// The starling mesh, upload once: the same ten triangles every instance.
+    mesh_vertices: Buffer,
+    /// The three per-level instance lists: `(bird index, weight)` pairs.
+    lod_lists: Option<Buffer>,
+    /// The three `DrawIndirect` argument blocks the LOD pass counts into.
+    lod_args: Buffer,
+    /// The bird count the LOD buffers were sized for.
+    lod_birds: u32,
+
     sky_bind: BindGroup,
-    coverage_bind: Option<BindGroup>,
-    tonemap_bind: BindGroup,
+    bird_bind: Option<BindGroup>,
+    lod_bind: Option<BindGroup>,
+    tonemap_bind: [BindGroup; 2],
+    taa_bind: [BindGroup; 2],
     exposure_bind: BindGroup,
+
+    /// The running HDR image the tone map reads: `accum[parity]` is history and
+    /// `accum[1 - parity]` is this frame's.
+    accum: [Texture; 2],
+    accum_view: [TextureView; 2],
+    /// The resolve's `blend.x` is this frame's history weight.
+    blend: Buffer,
+    /// GPU timestamps around the frame's passes, when the adapter can write
+    /// them. `None` means the frame time cannot be measured, and callers must
+    /// say so rather than reporting a wall clock.
+    timestamps: Option<QuerySet>,
+    timestamp_buffer: Buffer,
+    timestamp_staging: Buffer,
+    /// Frames rendered so far, for the jitter sequence and the ping-pong.
+    frame: u32,
+    /// Cleared when the history must be thrown away (a new or resized target).
+    accum_ready: bool,
+    /// Overrides the resolve's history weight for the next frame.
+    history_weight: Option<f32>,
+    /// Overrides the next frame's sample offset.
+    fixed_jitter: Option<[f32; 2]>,
 
     hdr: Texture,
     hdr_view: TextureView,
@@ -208,14 +279,43 @@ impl Renderer {
         );
         let sky_module = shader(device, "sky", &sky_source);
 
-        let coverage_source = format!(
-            "{scene_wgsl}\n{BIRD_WGSL}\n{}",
-            include_str!("../shaders/coverage.wgsl")
+        // The three bird passes and the LOD classifier all read a `Bird` and the
+        // scene, so they share one prelude.
+        let bird_pass_wgsl = include_str!("../shaders/bird_pass.wgsl");
+        let bird_prelude = format!("{scene_wgsl}\n{BIRD_WGSL}\n{bird_pass_wgsl}");
+        let coverage_module = shader(
+            device,
+            "coverage",
+            &format!(
+                "{bird_prelude}\n{}",
+                include_str!("../shaders/coverage.wgsl")
+            ),
         );
-        let coverage_module = shader(device, "coverage", &coverage_source);
+        let mesh_module = shader(
+            device,
+            "mesh",
+            &format!(
+                "{bird_prelude}\n{}",
+                include_str!("../shaders/bird_mesh.wgsl")
+            ),
+        );
+        let impostor_module = shader(
+            device,
+            "impostor",
+            &format!(
+                "{bird_prelude}\n{}",
+                include_str!("../shaders/impostor.wgsl")
+            ),
+        );
+        let lod_module = shader(
+            device,
+            "lod",
+            &format!("{bird_prelude}\n{}", include_str!("../shaders/lod.wgsl")),
+        );
 
         let tonemap_source = include_str!("../shaders/tonemap.wgsl").to_string();
         let tonemap_module = shader(device, "tonemap", &tonemap_source);
+        let taa_module = shader(device, "taa", include_str!("../shaders/taa.wgsl"));
 
         let exposure_module = shader(device, "exposure", include_str!("../shaders/exposure.wgsl"));
 
@@ -239,6 +339,16 @@ impl Renderer {
             },
             count: None,
         };
+        let storage_write = |binding: u32, visibility: ShaderStages| BindGroupLayoutEntry {
+            binding,
+            visibility,
+            ty: BindingType::Buffer {
+                ty: BufferBindingType::Storage { read_only: false },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+            count: None,
+        };
         let texture_entry = |binding: u32, visibility: ShaderStages| BindGroupLayoutEntry {
             binding,
             visibility,
@@ -254,31 +364,40 @@ impl Renderer {
             label: Some("render: sky layout"),
             entries: &[uniform_entry(0, ShaderStages::VERTEX_FRAGMENT)],
         });
-        let coverage_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("render: coverage layout"),
+        let bird_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("render: bird layout"),
             entries: &[
                 uniform_entry(0, ShaderStages::VERTEX_FRAGMENT),
                 storage_read(1, ShaderStages::VERTEX),
+                storage_read(2, ShaderStages::VERTEX),
+            ],
+        });
+        let lod_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("render: lod layout"),
+            entries: &[
+                uniform_entry(0, ShaderStages::COMPUTE),
+                storage_read(1, ShaderStages::COMPUTE),
+                storage_write(2, ShaderStages::COMPUTE),
+                storage_write(3, ShaderStages::COMPUTE),
             ],
         });
         let tonemap_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("render: tonemap layout"),
             entries: &[texture_entry(0, ShaderStages::FRAGMENT)],
         });
+        let taa_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("render: taa layout"),
+            entries: &[
+                texture_entry(0, ShaderStages::FRAGMENT),
+                texture_entry(1, ShaderStages::FRAGMENT),
+                uniform_entry(2, ShaderStages::FRAGMENT),
+            ],
+        });
         let exposure_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("render: exposure layout"),
             entries: &[
                 texture_entry(0, ShaderStages::COMPUTE),
-                BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: ShaderStages::COMPUTE,
-                    ty: BindingType::Buffer {
-                        ty: BufferBindingType::Storage { read_only: false },
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
+                storage_write(1, ShaderStages::COMPUTE),
             ],
         });
 
@@ -316,55 +435,51 @@ impl Renderer {
             cache: None,
         });
 
-        let coverage = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("render: coverage"),
-            layout: Some(&pipeline_layout(
-                "render: coverage layout",
-                &[&coverage_layout],
-            )),
-            vertex: VertexState {
-                module: &coverage_module,
-                entry_point: Some("vs_bird"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: Default::default(),
-            fragment: Some(FragmentState {
-                module: &coverage_module,
-                entry_point: Some("fs_bird"),
-                compilation_options: Default::default(),
-                targets: &[
-                    // The HDR target darkens: dst *= (1 - coverage). The alpha
-                    // channel is left as the sky wrote it.
-                    Some(ColorTargetState {
-                        format: HDR_FORMAT,
-                        blend: Some(BlendState {
-                            color: BlendComponent {
-                                src_factor: BlendFactor::Zero,
-                                dst_factor: BlendFactor::OneMinusSrc,
-                                operation: BlendOperation::Add,
-                            },
-                            alpha: BlendComponent {
-                                src_factor: BlendFactor::Zero,
-                                dst_factor: BlendFactor::One,
-                                operation: BlendOperation::Add,
-                            },
-                        }),
-                        write_mask: ColorWrites::ALL,
-                    }),
-                    // The optical-depth target accumulates: dst += raw.
-                    Some(ColorTargetState {
-                        format: OPTICS_FORMAT,
-                        blend: Some(additive()),
-                        write_mask: ColorWrites::ALL,
-                    }),
+        // The three bird levels: the mesh (vertex data), the impostor quad and
+        // the sub-pixel splat (both quad-less). All three darken the HDR target
+        // and accumulate raw optical depth with the same blends.
+        let mesh = bird_pipeline(
+            device,
+            "render: mesh",
+            &bird_layout,
+            &mesh_module,
+            "vs_mesh",
+            "fs_mesh",
+            &[Some(VertexBufferLayout {
+                array_stride: std::mem::size_of::<mesh::Vertex>() as u64,
+                step_mode: VertexStepMode::Vertex,
+                attributes: &[
+                    VertexAttribute {
+                        format: VertexFormat::Float32x3,
+                        offset: 0,
+                        shader_location: 0,
+                    },
+                    VertexAttribute {
+                        format: VertexFormat::Float32,
+                        offset: 12,
+                        shader_location: 1,
+                    },
                 ],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+            })],
+        );
+        let impostor = bird_pipeline(
+            device,
+            "render: impostor",
+            &bird_layout,
+            &impostor_module,
+            "vs_impostor",
+            "fs_impostor",
+            &[],
+        );
+        let coverage = bird_pipeline(
+            device,
+            "render: coverage",
+            &bird_layout,
+            &coverage_module,
+            "vs_bird",
+            "fs_bird",
+            &[],
+        );
 
         let tonemap = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("render: tonemap"),
@@ -395,6 +510,32 @@ impl Renderer {
             cache: None,
         });
 
+        let taa = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("render: taa"),
+            layout: Some(&pipeline_layout("render: taa layout", &[&taa_layout])),
+            vertex: VertexState {
+                module: &taa_module,
+                entry_point: Some("vs_taa"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            primitive: PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            fragment: Some(FragmentState {
+                module: &taa_module,
+                entry_point: Some("fs_taa"),
+                compilation_options: Default::default(),
+                targets: &[Some(ColorTargetState {
+                    format: HDR_FORMAT,
+                    blend: None,
+                    write_mask: ColorWrites::ALL,
+                })],
+            }),
+            multiview_mask: None,
+            cache: None,
+        });
+
         let exposure_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
             label: Some("render: exposure"),
             layout: Some(&pipeline_layout(
@@ -406,6 +547,38 @@ impl Renderer {
             compilation_options: Default::default(),
             cache: None,
         });
+
+        let lod_pipeline = device.create_compute_pipeline(&ComputePipelineDescriptor {
+            label: Some("render: lod"),
+            layout: Some(&pipeline_layout("render: lod layout", &[&lod_layout])),
+            module: &lod_module,
+            entry_point: Some("classify"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
+
+        let mesh_vertices = device.create_buffer(&BufferDescriptor {
+            label: Some("render: starling mesh"),
+            size: std::mem::size_of_val(mesh::VERTICES) as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        gpu.queue
+            .write_buffer(&mesh_vertices, 0, bytemuck::cast_slice(mesh::VERTICES));
+
+        // The indirect draw arguments: three blocks whose instance counts start
+        // at zero and are counted up by the LOD classifier.
+        let lod_args = device.create_buffer(&BufferDescriptor {
+            label: Some("render: lod draw args"),
+            size: std::mem::size_of_val(&lod_args_template()) as u64,
+            usage: BufferUsages::STORAGE
+                | BufferUsages::INDIRECT
+                | BufferUsages::COPY_SRC
+                | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        gpu.queue
+            .write_buffer(&lod_args, 0, bytemuck::cast_slice(&lod_args_template()));
 
         let histogram = device.create_buffer(&BufferDescriptor {
             label: Some("render: exposure histogram"),
@@ -423,6 +596,41 @@ impl Renderer {
         let (hdr, hdr_view) = target_texture(device, width, height, HDR_FORMAT, "render: hdr");
         let (optics, optics_view) =
             target_texture(device, width, height, OPTICS_FORMAT, "render: optics");
+        let (accum, accum_view) = history_targets(device, width, height);
+        let blend = device.create_buffer(&BufferDescriptor {
+            label: Some("render: taa blend"),
+            size: 16,
+            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        gpu.queue
+            .write_buffer(&blend, 0, bytemuck::cast_slice(&[1.0f32, 0.0, 0.0, 0.0]));
+
+        // Frame-time probes, only where the adapter can write timestamps: a
+        // frame time is reported from the GPU's own clock or not at all.
+        let timestamps = gpu
+            .device
+            .features()
+            .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS)
+            .then(|| {
+                device.create_query_set(&wgpu::QuerySetDescriptor {
+                    label: Some("render: frame timestamps"),
+                    ty: wgpu::QueryType::Timestamp,
+                    count: TIMESTAMP_SLOTS as u32,
+                })
+            });
+        let timestamp_buffer = device.create_buffer(&BufferDescriptor {
+            label: Some("render: timestamps"),
+            size: (TIMESTAMP_SLOTS * 8) as u64,
+            usage: BufferUsages::QUERY_RESOLVE | BufferUsages::COPY_SRC | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let timestamp_staging = device.create_buffer(&BufferDescriptor {
+            label: Some("render: timestamps readback"),
+            size: (TIMESTAMP_SLOTS * 8) as u64,
+            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         let sky_bind = device.create_bind_group(&BindGroupDescriptor {
             label: Some("render: sky bind"),
@@ -432,14 +640,14 @@ impl Renderer {
                 resource: scene_buffer.as_entire_binding(),
             }],
         });
-        let tonemap_bind = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("render: tonemap bind"),
-            layout: &tonemap_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&hdr_view),
-            }],
-        });
+        let (tonemap_bind, taa_bind) = history_binds(
+            device,
+            &tonemap_layout,
+            &taa_layout,
+            &hdr_view,
+            &accum_view,
+            &blend,
+        );
         let exposure_bind = device.create_bind_group(&BindGroupDescriptor {
             label: Some("render: exposure bind"),
             layout: &exposure_layout,
@@ -472,16 +680,38 @@ impl Renderer {
             size: (width, height),
             output_format,
             sky,
+            mesh,
+            impostor,
             coverage,
             tonemap,
+            taa,
             exposure_pipeline,
-            coverage_layout,
+            lod_pipeline,
+            bird_layout,
+            lod_layout,
             tonemap_layout,
+            taa_layout,
             exposure_layout,
+            mesh_vertices,
+            lod_lists: None,
+            lod_args,
+            lod_birds: 0,
             sky_bind,
-            coverage_bind: None,
+            bird_bind: None,
+            lod_bind: None,
             tonemap_bind,
+            taa_bind,
             exposure_bind,
+            accum,
+            accum_view,
+            blend,
+            timestamps,
+            timestamp_buffer,
+            timestamp_staging,
+            frame: 0,
+            accum_ready: false,
+            history_weight: None,
+            fixed_jitter: None,
             hdr,
             hdr_view,
             optics,
@@ -498,6 +728,101 @@ impl Renderer {
         self.exposure
     }
 
+    /// Fixes the exposure and stops it adapting. A frame whose subject is one
+    /// bird cannot give the histogram a sensible 80th percentile, so the
+    /// measurement modes pin the exposure to what a flock settles on instead of
+    /// letting a single bird's pixels choose it.
+    pub fn set_exposure(&mut self, exposure: f32) {
+        self.exposure = exposure.clamp(EXPOSURE_MIN, EXPOSURE_MAX);
+        self.exposure_ready = true;
+    }
+
+    /// The GPU time of each probe in [`TIMESTAMP_SLOTS`], in milliseconds,
+    /// relative to the frame's start (slot 0), as of the last submitted frame.
+    /// `None` when the adapter cannot write timestamps — callers must then say
+    /// the frame time is unmeasured rather than time it on the CPU.
+    pub fn frame_times_ms(&self, gpu: &Gpu) -> Option<[f32; TIMESTAMP_SLOTS]> {
+        self.timestamps.as_ref()?;
+        let (tx, rx) = mpsc::channel();
+        self.timestamp_staging
+            .map_async(wgpu::MapMode::Read, .., move |result| {
+                let _ = tx.send(result);
+            });
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("waiting for the frame timestamps");
+        rx.recv()
+            .expect("the poll ran the mapping callback before returning")
+            .expect("mapping the frame timestamps");
+        let range = self
+            .timestamp_staging
+            .get_mapped_range(..)
+            .expect("reading the frame timestamps");
+        let ticks: &[u64] = bytemuck::cast_slice(&range);
+        let start = ticks[0];
+        let period = f64::from(gpu.queue.get_timestamp_period());
+        let times =
+            std::array::from_fn(|i| ((ticks[i].wrapping_sub(start)) as f64 * period / 1e6) as f32);
+        drop(range);
+        self.timestamp_staging.unmap();
+        Some(times)
+    }
+
+    /// Fixes the frame's sub-pixel sample offset (`None` returns to the Halton
+    /// sequence). A measurement whose frames must differ only by the thing being
+    /// measured sets this to zero, so the jitter does not move the birds between
+    /// frames.
+    pub fn set_jitter(&mut self, jitter: Option<[f32; 2]>) {
+        self.fixed_jitter = jitter;
+    }
+
+    /// Overrides the temporal-AA history weight for the frames that follow
+    /// (`None` returns to the frame-time rule). A still capture ramps it down as
+    /// `1 / (frame + 1)` so the frozen scene converges like a box filter — the
+    /// sub-pixel jitter then acts as a real supersample — instead of keeping an
+    /// exponential window of the last few frames.
+    pub fn set_history_weight(&mut self, weight: Option<f32>) {
+        self.history_weight = weight;
+    }
+
+    /// How many birds the last frame drew at each LOD level: mesh, impostor,
+    /// splat. Read back from the indirect draw arguments, for the record.
+    pub fn lod_counts(&self, gpu: &Gpu) -> [u32; LOD_LEVELS] {
+        let size = std::mem::size_of_val(&lod_args_template()) as u64;
+        let readback = gpu.device.create_buffer(&BufferDescriptor {
+            label: Some("render: lod counts readback"),
+            size,
+            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let mut encoder = gpu
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("render: lod counts"),
+            });
+        encoder.copy_buffer_to_buffer(&self.lod_args, 0, &readback, 0, size);
+        gpu.queue.submit(Some(encoder.finish()));
+
+        let (tx, rx) = mpsc::channel();
+        readback.map_async(wgpu::MapMode::Read, .., move |result| {
+            let _ = tx.send(result);
+        });
+        gpu.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .expect("waiting for the LOD count readback");
+        rx.recv()
+            .expect("the poll ran the mapping callback before returning")
+            .expect("mapping the LOD counts");
+        let range = readback
+            .get_mapped_range(..)
+            .expect("reading the LOD counts");
+        let args: &[u32] = bytemuck::cast_slice(&range);
+        let counts = std::array::from_fn(|level| args[level * 4 + 1]);
+        drop(range);
+        readback.unmap();
+        counts
+    }
+
     /// The current scene block.
     pub fn scene(&self) -> &Scene {
         &self.scene
@@ -510,11 +835,34 @@ impl Renderer {
             .write_buffer(&self.scene_buffer, 0, bytemuck::bytes_of(&scene));
     }
 
-    /// Points the coverage pass at a (new) bird storage buffer.
-    pub fn set_birds(&mut self, gpu: &Gpu, birds: &Buffer) {
-        self.coverage_bind = Some(gpu.device.create_bind_group(&BindGroupDescriptor {
-            label: Some("render: coverage bind"),
-            layout: &self.coverage_layout,
+    /// Points the bird passes at a (new) bird storage buffer, sizing the LOD
+    /// lists for `count` instances. `count` may exceed the birds the simulation
+    /// actually draws; the extra lists stay empty.
+    pub fn set_birds(&mut self, gpu: &Gpu, birds: &Buffer, count: u32) {
+        let device = &gpu.device;
+        let count = count.max(1);
+        // The list buffer only depends on the bird count, and the window
+        // re-points the bird buffer every frame (the simulation ping-pongs it),
+        // so keep the allocation while the count holds and rebuild only the bind
+        // groups that name the new buffer.
+        if self.lod_lists.is_none() || self.lod_birds != count {
+            self.lod_lists = Some(device.create_buffer(&BufferDescriptor {
+                label: Some("render: lod lists"),
+                size: u64::from(count) * LOD_LEVELS as u64 * LOD_ENTRY_BYTES,
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            self.lod_birds = count;
+        }
+        let lists = self.lod_lists.clone().expect("just created");
+        gpu.queue.write_buffer(
+            &self.lod_args,
+            0,
+            bytemuck::cast_slice(&lod_args_template()),
+        );
+        self.bird_bind = Some(device.create_bind_group(&BindGroupDescriptor {
+            label: Some("render: bird bind"),
+            layout: &self.bird_layout,
             entries: &[
                 BindGroupEntry {
                     binding: 0,
@@ -523,6 +871,32 @@ impl Renderer {
                 BindGroupEntry {
                     binding: 1,
                     resource: birds.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: lists.as_entire_binding(),
+                },
+            ],
+        }));
+        self.lod_bind = Some(device.create_bind_group(&BindGroupDescriptor {
+            label: Some("render: lod bind"),
+            layout: &self.lod_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: self.scene_buffer.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: birds.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: lists.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: self.lod_args.as_entire_binding(),
                 },
             ],
         }));
@@ -540,18 +914,25 @@ impl Renderer {
         let (hdr, hdr_view) = target_texture(device, width, height, HDR_FORMAT, "render: hdr");
         let (optics, optics_view) =
             target_texture(device, width, height, OPTICS_FORMAT, "render: optics");
+        let (accum, accum_view) = history_targets(device, width, height);
+        let (tonemap_bind, taa_bind) = history_binds(
+            device,
+            &self.tonemap_layout,
+            &self.taa_layout,
+            &hdr_view,
+            &accum_view,
+            &self.blend,
+        );
         self.hdr = hdr;
         self.hdr_view = hdr_view;
         self.optics = optics;
         self.optics_view = optics_view;
-        self.tonemap_bind = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("render: tonemap bind"),
-            layout: &self.tonemap_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(&self.hdr_view),
-            }],
-        });
+        self.accum = accum;
+        self.accum_view = accum_view;
+        self.tonemap_bind = tonemap_bind;
+        self.taa_bind = taa_bind;
+        // The resized history holds another size's frame: start it again.
+        self.accum_ready = false;
         self.exposure_bind = device.create_bind_group(&BindGroupDescriptor {
             label: Some("render: exposure bind"),
             layout: &self.exposure_layout,
@@ -581,16 +962,63 @@ impl Renderer {
     }
 
     fn render_impl(&mut self, gpu: &Gpu, view: &TextureView, birds: u32, dt: f32) {
-        // The optical-depth histogram is an atomic counter; zero it first.
+        // The optical-depth histogram is an atomic counter; zero it first. The
+        // indirect draws start at zero instances, with their per-level vertex
+        // counts kept.
         gpu.queue.write_buffer(&self.histogram, 0, &[0u8; BINS * 4]);
+        gpu.queue.write_buffer(
+            &self.lod_args,
+            0,
+            bytemuck::cast_slice(&lod_args_template()),
+        );
+
+        // This frame's temporal-AA sample offset, and the weight the history
+        // keeps. The first frame after a target is built starts the history
+        // rather than blending into an empty one.
+        self.scene.jitter = self.fixed_jitter.unwrap_or_else(|| taa_jitter(self.frame));
+        gpu.queue
+            .write_buffer(&self.scene_buffer, 0, bytemuck::bytes_of(&self.scene));
+        let alpha = match self.history_weight {
+            Some(weight) => weight,
+            None if self.accum_ready => 1.0 - (-dt.max(0.0) / TAA_TAU).exp(),
+            None => 1.0,
+        };
+        self.accum_ready = true;
+        gpu.queue.write_buffer(
+            &self.blend,
+            0,
+            bytemuck::cast_slice(&[alpha, 0.0, 0.0, 0.0]),
+        );
+        let parity = (self.frame % 2) as usize;
+        self.frame = self.frame.wrapping_add(1);
 
         let mut encoder = gpu
             .device
             .create_command_encoder(&CommandEncoderDescriptor {
                 label: Some("render: frame"),
             });
+        if let Some(set) = &self.timestamps {
+            encoder.write_timestamp(set, 0);
+        }
 
-        // 1. Sky into the HDR target.
+        // 1. Classify every bird by its projected wingspan and append it to its
+        //    level's instance list. The atomic counters the classifier takes its
+        //    slots from are the same words the three draws read their instance
+        //    counts from, so there is no second pass to collect them.
+        if let Some(lod_bind) = &self.lod_bind {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("render: lod"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.lod_pipeline);
+            pass.set_bind_group(0, lod_bind, &[]);
+            pass.dispatch_workgroups(birds.min(self.lod_birds).div_ceil(LOD_WORKGROUP), 1, 1);
+        }
+        if let Some(set) = &self.timestamps {
+            encoder.write_timestamp(set, 1);
+        }
+
+        // 2. Sky into the HDR target.
         {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("render: sky"),
@@ -613,12 +1041,12 @@ impl Renderer {
             pass.draw(0..3, 0..1);
         }
 
-        // 2. Bird coverage into the HDR and optical-depth targets. The optics
-        // target is cleared here even with no birds, so the exposure histogram
-        // never reads a stale frame; the HDR target is loaded so the sky stays.
-        if let Some(coverage_bind) = &self.coverage_bind {
+        // 3. The three bird levels, one indirect draw each. The optics target is
+        // cleared here even with no birds, so the exposure histogram never reads
+        // a stale frame; the HDR target is loaded so the sky stays.
+        if let Some(bird_bind) = &self.bird_bind {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("render: coverage"),
+                label: Some("render: birds"),
                 color_attachments: &[
                     Some(RenderPassColorAttachment {
                         view: &self.hdr_view,
@@ -644,9 +1072,18 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.coverage);
-            pass.set_bind_group(0, coverage_bind, &[]);
-            pass.draw(0..6, 0..birds);
+            pass.set_bind_group(0, bird_bind, &[]);
+            pass.set_vertex_buffer(0, self.mesh_vertices.slice(..));
+            for (level, pipeline) in [&self.mesh, &self.impostor, &self.coverage]
+                .into_iter()
+                .enumerate()
+            {
+                pass.set_pipeline(pipeline);
+                pass.draw_indirect(&self.lod_args, (level * ARGS_STRIDE) as u64);
+            }
+        }
+        if let Some(set) = &self.timestamps {
+            encoder.write_timestamp(set, 2);
         }
 
         // 3. Histogram the optical depth.
@@ -667,8 +1104,38 @@ impl Renderer {
             0,
             (BINS * 4) as u64,
         );
+        if let Some(set) = &self.timestamps {
+            encoder.write_timestamp(set, 3);
+        }
 
-        // 4. Tone map the HDR target to the output.
+        // 4. Blend the frame into the history. This is what the tone map reads,
+        //    so what is displayed is the accumulated picture, not one frame.
+        {
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("render: taa"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &self.accum_view[1 - parity],
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(wgpu::Color::BLACK),
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.taa);
+            pass.set_bind_group(0, &self.taa_bind[parity], &[]);
+            pass.draw(0..3, 0..1);
+        }
+        if let Some(set) = &self.timestamps {
+            encoder.write_timestamp(set, 4);
+        }
+
+        // 5. Tone map the accumulated HDR image to the output.
         {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("render: tonemap"),
@@ -687,8 +1154,19 @@ impl Renderer {
                 multiview_mask: None,
             });
             pass.set_pipeline(&self.tonemap);
-            pass.set_bind_group(0, &self.tonemap_bind, &[]);
+            pass.set_bind_group(0, &self.tonemap_bind[1 - parity], &[]);
             pass.draw(0..3, 0..1);
+        }
+        if let Some(set) = &self.timestamps {
+            encoder.write_timestamp(set, 5);
+            encoder.resolve_query_set(set, 0..TIMESTAMP_SLOTS as u32, &self.timestamp_buffer, 0);
+            encoder.copy_buffer_to_buffer(
+                &self.timestamp_buffer,
+                0,
+                &self.timestamp_staging,
+                0,
+                (TIMESTAMP_SLOTS * 8) as u64,
+            );
         }
 
         gpu.queue.submit(Some(encoder.finish()));
@@ -862,6 +1340,80 @@ fn target_texture(
     (texture, view)
 }
 
+/// The two HDR images the temporal resolve ping-pongs between.
+fn history_targets(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> ([Texture; 2], [TextureView; 2]) {
+    let (a, a_view) = target_texture(device, width, height, HDR_FORMAT, "render: history 0");
+    let (b, b_view) = target_texture(device, width, height, HDR_FORMAT, "render: history 1");
+    ([a, b], [a_view, b_view])
+}
+
+/// The two pairs of bind groups the temporal resolve uses: `taa[k]` reads
+/// `accum[k]` as history and writes `accum[1 - k]`, which `tonemap[1 - k]` reads.
+fn history_binds(
+    device: &wgpu::Device,
+    tonemap_layout: &BindGroupLayout,
+    taa_layout: &BindGroupLayout,
+    hdr_view: &TextureView,
+    accum_view: &[TextureView; 2],
+    blend: &Buffer,
+) -> ([BindGroup; 2], [BindGroup; 2]) {
+    let tonemap = std::array::from_fn(|k| {
+        device.create_bind_group(&BindGroupDescriptor {
+            label: Some("render: tonemap bind"),
+            layout: tonemap_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&accum_view[k]),
+            }],
+        })
+    });
+    let taa = std::array::from_fn(|k| {
+        device.create_bind_group(&BindGroupDescriptor {
+            label: Some("render: taa bind"),
+            layout: taa_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(hdr_view),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&accum_view[k]),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: blend.as_entire_binding(),
+                },
+            ],
+        })
+    });
+    (tonemap, taa)
+}
+
+/// This frame's sub-pixel sample offset, from a Halton (2, 3) sequence over
+/// `TAA_SAMPLES` frames, centred so no bias is introduced.
+fn taa_jitter(frame: u32) -> [f32; 2] {
+    let i = frame % TAA_SAMPLES + 1;
+    [halton(i, 2) - 0.5, halton(i, 3) - 0.5]
+}
+
+/// The `base`-ary radical inverse of `index`, the Halton sequence's term.
+fn halton(index: u32, base: u32) -> f32 {
+    let mut index = index;
+    let mut fraction = 1.0f32;
+    let mut result = 0.0f32;
+    while index > 0 {
+        fraction /= base as f32;
+        result += fraction * (index % base) as f32;
+        index /= base;
+    }
+    result
+}
+
 /// The additive blend used for the optical-depth accumulation.
 fn additive() -> BlendState {
     BlendState {
@@ -876,6 +1428,115 @@ fn additive() -> BlendState {
             operation: BlendOperation::Add,
         },
     }
+}
+
+/// The multiplicative darkness every bird level deposits: `dst *= 1 - coverage`,
+/// with the alpha channel left as the sky wrote it.
+fn darken() -> BlendState {
+    BlendState {
+        color: BlendComponent {
+            src_factor: BlendFactor::Zero,
+            dst_factor: BlendFactor::OneMinusSrc,
+            operation: BlendOperation::Add,
+        },
+        alpha: BlendComponent {
+            src_factor: BlendFactor::Zero,
+            dst_factor: BlendFactor::One,
+            operation: BlendOperation::Add,
+        },
+    }
+}
+
+/// Builds one of the three bird-level pipelines. They share a layout (scene,
+/// birds, instance lists), the two colour targets and the blends, and differ
+/// only in their shader and, for the mesh, in having a vertex buffer.
+fn bird_pipeline(
+    device: &wgpu::Device,
+    label: &'static str,
+    layout: &BindGroupLayout,
+    module: &wgpu::ShaderModule,
+    vertex_entry: &str,
+    fragment_entry: &str,
+    buffers: &[Option<VertexBufferLayout<'_>>],
+) -> RenderPipeline {
+    let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        label: Some(label),
+        bind_group_layouts: &[Some(layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&RenderPipelineDescriptor {
+        label: Some(label),
+        layout: Some(&pipeline_layout),
+        vertex: VertexState {
+            module,
+            entry_point: Some(vertex_entry),
+            compilation_options: Default::default(),
+            buffers,
+        },
+        primitive: PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: Default::default(),
+        fragment: Some(FragmentState {
+            module,
+            entry_point: Some(fragment_entry),
+            compilation_options: Default::default(),
+            targets: &[
+                Some(ColorTargetState {
+                    format: HDR_FORMAT,
+                    blend: Some(darken()),
+                    write_mask: ColorWrites::ALL,
+                }),
+                Some(ColorTargetState {
+                    format: OPTICS_FORMAT,
+                    blend: Some(additive()),
+                    write_mask: ColorWrites::ALL,
+                }),
+            ],
+        }),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+/// How many LOD levels the classifier writes and the renderer draws. Must match
+/// the `LEVEL` of the three pass shaders; `tests/lod_constants.rs` parses them
+/// out of the WGSL.
+pub const LOD_LEVELS: usize = 3;
+
+/// Bytes of one instance-list entry: `(bird index, weight bits)`, a `vec2<u32>`.
+const LOD_ENTRY_BYTES: u64 = 8;
+
+/// Bytes of one `DrawIndirect` block: four `u32`.
+const ARGS_STRIDE: usize = 16;
+
+/// What `shaders/lod.wgsl` declares as its workgroup size, checked by
+/// `tests/lod_constants.rs`.
+pub const LOD_WORKGROUP: u32 = 64;
+
+/// Projected wingspan \[px\] at which the mesh takes over, and the half-width of
+/// the mesh↔impostor cross-fade: the same numbers as `shaders/lod.wgsl`, which
+/// `tests/lod_constants.rs` checks. The app's `--lod-sweep` measures the
+/// transition these describe.
+pub const RHO_MESH: f32 = 6.0;
+pub const LOD_BAND: f32 = 1.0;
+
+/// Below this a bird is smaller than a pixel and the analytic splat draws it.
+pub const RHO_SPLAT: f32 = 1.5;
+
+/// Vertices the level's pipeline draws per instance: the mesh's triangle list,
+/// then a quad for the impostor and one for the splat.
+const LOD_VERTICES: [u32; LOD_LEVELS] = [mesh::VERTEX_COUNT, 6, 6];
+
+/// The indirect draw arguments with zero instances: the template the renderer
+/// writes back before the classifier counts the birds of a frame.
+fn lod_args_template() -> [u32; LOD_LEVELS * 4] {
+    let mut args = [0u32; LOD_LEVELS * 4];
+    let mut level = 0;
+    while level < LOD_LEVELS {
+        args[level * 4] = LOD_VERTICES[level];
+        level += 1;
+    }
+    args
 }
 
 /// Compiles a WGSL module, surfacing the shader source in the error.

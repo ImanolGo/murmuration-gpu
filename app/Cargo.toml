@@ -8,6 +8,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+bytemuck.workspace = true
+glam.workspace = true
 murmur-gpu = { path = "../crates/murmur-gpu" }
 murmur-render = { path = "../crates/murmur-render" }
 pollster.workspace = true

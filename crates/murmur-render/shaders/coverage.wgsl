@@ -1,24 +1,24 @@
-// The bird coverage pass: one instanced quad per bird deposits optical-depth
-// coverage into the HDR target and raw optical depth into the optics target.
+// LOD level 2: the sub-pixel coverage splat (PLAN.md phase 5), drawn here from
+// the LOD classifier's instance list and scaled by its cross-fade weight.
 //
 // Mirrors the terminal reference's `render/splat.rs`:
 //   * the raw optical depth is `a = (0.15 + 0.85 * |up·d̂|) * flap * atmosphere`,
-//     the Costanzo et al. (2022) wing-exposure term;
+//     the Costanzo et al. (2022) wing-exposure term (`bird_pass.wgsl`);
 //   * the footprint blends continuously between a bilinear sub-pixel splat and
 //     a resolved Gaussian, both carrying the same optical mass
 //     `mass = a * rho²` (the old one-pixel switch jumped ~57 % in darkness).
 //
-// The turning of the bird's body frame (`forward`, `side_of`, `body_up`) comes
-// from `bird.wgsl`, the shared definition also used by the simulation, so the
-// wing exposure is computed the same way the reference derives it.
+// This is the level every bird smaller than `RHO_SPLAT` is drawn with, and it
+// carries exactly the mass the mesh and the impostor carry on average, so the
+// level a bird is drawn at never changes how dark it is.
 
 @group(0) @binding(1) var<storage, read> birds: array<Bird>;
-
-// `splat.rs` constants.
-const WINGSPAN: f32 = 0.4;
-const ATMOSPHERE: f32 = 700.0;
+@group(0) @binding(2) var<storage, read> lod_lists: array<vec2<u32>>;
 
 const TAU2: f32 = 6.283185307179586;
+
+/// This pass draws level 2 of the instance lists.
+const LEVEL: u32 = 2u;
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
@@ -28,23 +28,17 @@ struct VsOut {
     @location(1) foot: vec4<f32>,
 };
 
-struct FsOut {
-    @location(0) hdr: vec4<f32>,
-    @location(1) optics: vec4<f32>,
-};
-
 @vertex
 fn vs_bird(
     @builtin(vertex_index) vid: u32,
     @builtin(instance_index) iid: u32,
 ) -> VsOut {
     var out: VsOut;
-    let b = birds[iid];
-
-    let focal = (scene.viewport.y * 0.5) / tan(scene.fov * 0.5);
-    let rel = b.pos - scene.eye;
-    let depth = dot(rel, scene.forward);
-    if (depth <= 1.0) {
+    let stride = arrayLength(&lod_lists) / 3u;
+    let entry = lod_lists[LEVEL * stride + iid];
+    let b = birds[entry.x];
+    let s = bird_screen(b);
+    if (s.depth <= 1.0) {
         // Behind the camera: push the whole quad off-screen.
         out.clip = vec4<f32>(2.0, 2.0, 0.0, 1.0);
         out.center = vec2<f32>(0.0, 0.0);
@@ -52,17 +46,8 @@ fn vs_bird(
         return out;
     }
 
-    let cx = scene.viewport.x * 0.5 + dot(rel, scene.right) * focal / depth;
-    let cy = scene.viewport.y * 0.5 - dot(rel, scene.up) * focal / depth;
-    let rho = min(WINGSPAN * focal / depth, 16.0);
-
-    let up = body_up(forward(b.vel), b.roll);
-    let dhat = normalize(scene.eye - b.pos);
-    let flap = 1.0 + scene.flap_amplitude * b.flap_amp * sin(b.flap_phase);
-    let wing = clamp(abs(dot(up, dhat)) * flap, 0.0, 1.0);
-    let atmosphere = clamp(1.0 - depth / ATMOSPHERE, 0.25, 1.0);
-    let a = (0.15 + 0.85 * wing) * atmosphere;
-    let mass = a * rho * rho;
+    let rho = s.rho;
+    let mass = s.a * rho * rho * bitcast<f32>(entry.y);
 
     var mix = clamp(rho - 1.0, 0.0, 1.0);
     mix = mix * mix * (3.0 - 2.0 * mix);
@@ -72,24 +57,24 @@ fn vs_bird(
     let r = max(1.0, 2.5 * rho * 0.5);
     var corners = array<vec2<f32>, 6>(
         vec2<f32>(-1.0, -1.0), vec2<f32>(1.0, -1.0), vec2<f32>(-1.0, 1.0),
-        vec2<f32>(-1.0, 1.0), vec2<f32>(1.0, -1.0), vec2<f32>(1.0, 1.0),
+        vec2<f32>(1.0, 1.0), vec2<f32>(-1.0, 1.0), vec2<f32>(1.0, -1.0),
     );
     let off = corners[vid] * r;
-    let px = cx + off.x;
-    let py = cy + off.y;
+    let px = s.centre.x + off.x;
+    let py = s.centre.y + off.y;
     out.clip = vec4<f32>(
         px / scene.viewport.x * 2.0 - 1.0,
         1.0 - py / scene.viewport.y * 2.0,
         0.0,
         1.0,
     );
-    out.center = vec2<f32>(cx, cy);
+    out.center = s.centre;
     out.foot = vec4<f32>(rho, mass, mix, 0.0);
     return out;
 }
 
 @fragment
-fn fs_bird(in: VsOut) -> FsOut {
+fn fs_bird(in: VsOut) -> BirdOut {
     let rho = in.foot.x;
     let mass = in.foot.y;
     let mix = in.foot.z;
@@ -109,13 +94,5 @@ fn fs_bird(in: VsOut) -> FsOut {
         let peak = mass * mix / (TAU2 * sigma * sigma);
         raw = raw + peak * exp(-d2 / (2.0 * sigma * sigma));
     }
-
-    // Fold the exposure in so the multiplicative blend over birds is exactly
-    // `exp(-exposure * tau)`, the reference's additive compositor.
-    let c = 1.0 - exp(-scene.exposure * raw);
-
-    var out: FsOut;
-    out.hdr = vec4<f32>(c, c, c, 1.0);
-    out.optics = vec4<f32>(raw, 0.0, 0.0, 0.0);
-    return out;
+    return bird_out(raw);
 }

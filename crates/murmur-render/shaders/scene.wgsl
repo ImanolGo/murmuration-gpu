@@ -11,6 +11,13 @@ struct Scene {
     up: vec3<f32>, _pad3: f32,
     viewport: vec2<f32>, fov: f32, evening: f32,
     exposure: f32, flap_amplitude: f32, time: f32, _pad4: f32,
+    // Sub-pixel offset of this frame's sample, applied by the bird passes. TAA
+    // walks it through a jittered sequence so successive frames sample different
+    // points inside a pixel; see `shaders/taa.wgsl`.
+    jitter: vec2<f32>,
+    // Uniform layout rounds a struct up to 16 bytes; these keep the block the
+    // same size in Rust and WGSL.
+    _pad5: f32, _pad6: f32,
 };
 
 @group(0) @binding(0) var<uniform> scene: Scene;

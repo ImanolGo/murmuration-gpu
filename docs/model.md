@@ -307,6 +307,80 @@ reference's `render/` modules. Its deviations from them:
   pass has the distance term in the coverage but not the reference's separate
   fade target. Recorded so the difference is visible rather than assumed absent.
 
+### Phase 6 adaptations
+
+Phase 6 gives the flock birds (PLAN.md "Phase 6 — Birds"): a low-poly mesh, an
+impostor quad and the phase-5 splat, chosen by projected size in a compute pass,
+plus temporal anti-aliasing. The reference has none of this — it draws braille
+dots — so the geometry, the thresholds and the accumulation are the renderer's
+own. What is taken from the model is the **wingbeat**: the dihedral angle is
+driven by the model's `flap_phase` and `flap_amp` at the model's `FLAP_HZ = 10`
+Hz, the same two numbers `render/splat.rs` uses to flicker the wing exposure.
+The optical **mass** is also the model's: every level carries `a·ρ²`, so which
+level draws a bird does not change how much light it absorbs in total.
+
+- **The mesh is ten triangles.** A starling silhouette: two wing strips, a body
+  and a tail. The peak dihedral `FLAP_DIHEDRAL = 0.7 rad` is this renderer's own
+  constant (the reference has no wings to rotate to find it); the phase and rate
+  are the model's. `docs/progress.md` (phase 6) records the geometry.
+- **The mesh deposits a flat optical depth `a / MEAN_AREA`.** `MEAN_AREA =
+  0.0851` is the mesh's mean projected silhouette area in units of `ρ²`,
+  *measured* from the vertex data over viewing angles and wingbeat phases by
+  `mesh::mean_projected_area()`, and pinned against the shader's constant by
+  `tests/mesh_area.rs`. Dividing by it makes the mesh mass-preserving on
+  average, exactly like the splat.
+- **The impostor is a mass-preserving Gaussian mixture.** A body and two wing
+  lobes as normalised Gaussians, divided by the sum of their own integrals, so
+  its total optical depth is `a·ρ²` by construction. This is new: the reference
+  has no shape between a dot and a resolved bird. Its sigmas are the renderer's
+  own (`impostor.wgsl`).
+- **The LOD thresholds are renderer constants.** Mesh `≥ 6 px` with a `1 px`
+  cross-fade band `[5, 7]`, impostor `[1.5, 6)`, splat `< 1.5`. The mesh and
+  impostor thresholds are a *cross-fade*: a bird inside the band is written to
+  both lists with weights summing to one, and every level carries the same mass,
+  so only the bird's *shape* changes as it crosses. The thresholds are chosen
+  where the two shapes differ by less than a pixel; `--lod-sweep` measures the
+  result (`docs/progress.md`).
+- **Mass is preserved; ink is not, and that is the documented adaptation.** The
+  splat spreads `a·ρ²` over a disc of diameter `ρ` (area `π/4·ρ² ≈ 0.785ρ²`);
+  the mesh concentrates the same mass through a silhouette of mean area
+  `0.0851ρ²`. At the exposure a dense flock settles on, the splat is optically
+  thin (its peak depth is `2a/π`, a fraction of a unit) while the mesh is
+  saturated (`a/0.0851 ≈ 12a`). So at equal mass a resolved bird is much darker
+  per pixel but covers far less area, and its **total ink is lower** — an
+  optically thin dot model darkens a wide patch, an opaque bird does not. This
+  is the physics the phase-5 dot model cannot express, and it is why the mesh is
+  worth ten triangles. `--lod-sweep` measures the size of it: across the `[5,7]`
+  px cross-fade the ink moves `3.20 → 2.30` black pixels (`1.39×`) spread over
+  eight `0.25 px` steps — a gradual thinning, not a step. The starling mesh is
+  the *correct* shape at those sizes; the reference's disc is a sub-pixel
+  approximation that over-inks once the bird resolves.
+- **No depth buffer, and back-face culling is off.** The scene is optically thin
+  and the pass composites in call order: a depth buffer would sort a single
+  instance's own triangles for no gain, and culling back faces would hide the
+  underside of a wing seen from below, which is most of the flock. The draw
+  order is therefore the level order, and within a level the instance order.
+- **Temporal AA has no motion vectors.** Each frame jitters the bird passes by a
+  sub-pixel Halton(2,3) offset (carried in `Scene.jitter`) and the resolve blends
+  the fresh frame into a running image with `alpha = 1 - exp(-dt/TAA_TAU)`,
+  `TAA_TAU = 0.1 s`. There is no reprojection — no depth buffer and no motion
+  field — so the defence is the standard 3×3 neighbourhood clamp: the history
+  sample is clamped into the range the current frame shows around that pixel,
+  which rejects stale content. It is enough for the sub-pixel case it exists for
+  (a frozen flock: 77 % of the frame-to-frame change removed, `docs/progress.md`)
+  but it is not a reprojection, and a fast camera move will ghost. Motion
+  vectors are listed as open.
+
+### The splat look under the LOD change
+
+Level 2 (`coverage.wgsl`) is the phase-5 pass unchanged except that it reads the
+classifier's instance list and scales the mass by the cross-fade weight. A bird
+larger than `RHO_SPLAT` that used to be drawn by this pass is now drawn by the
+impostor or the mesh, so the phase-5 still's dense black core is now a mass of
+impostor dashes and mesh silhouettes. At 20,000 birds the two stills are
+near-identical to the eye (`docs/still-20k.png` vs `docs/still-20k-p6.png`),
+which is the continuity this phase is for.
+
 ## Known gaps (reported, not hidden)
 
 Carried over from the reference and not fixed here (fixing them would change the

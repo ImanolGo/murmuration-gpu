@@ -1,0 +1,9 @@
+# murmuration-gpu --capture /tmp/opencode/final/frames birds=20000 seed=1 seconds=20 frames=180 960x540
+# adapter "NVIDIA GeForce GTX 1650 with Max-Q Design" on Vulkan (DiscreteGpu), driver "NVIDIA" 615.78.08
+# the moving flock steps six integration steps (0.03 s) per frame, played back at 30 fps; the lens zooms 1.00 -> 0.35, so every bird grows 2.9x and crosses every LOD threshold in view
+# shimmer fly-past taa: change 7125.9 black px/frame (worst 11776.5), over-16 pixels 46854/frame, lod mesh=0 impostor=20000 splat=0 -> mesh=20000 impostor=0 splat=0, render 1.10 ms/frame
+# shimmer fly-past raw: change 28866.5 black px/frame (worst 64103.5), over-16 pixels 87115/frame, lod mesh=0 impostor=20000 splat=0 -> mesh=20000 impostor=0 splat=0, render 0.98 ms/frame
+# shimmer static   taa: change 68.5 black px/frame (worst 221.5), over-16 pixels 2/frame, lod mesh=0 impostor=0 splat=20000 -> mesh=0 impostor=0 splat=20000, render 0.38 ms/frame
+# shimmer static   raw: change 293.8 black px/frame (worst 352.3), over-16 pixels 1701/frame, lod mesh=0 impostor=0 splat=20000 -> mesh=0 impostor=0 splat=20000, render 0.38 ms/frame
+# temporal accumulation removes 75% of the in-motion change (0.25x) and 77% of the static flock's sub-pixel change (0.23x)
+# 180 frames written to /tmp/opencode/final/frames in 65s

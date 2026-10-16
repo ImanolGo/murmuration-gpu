@@ -742,3 +742,145 @@ intermediate that does not build; the phase boundary is kept in this log and in
 `PLAN.md` instead. Recorded because the earlier commits are one per phase, and
 this one is not.
 
+
+## Phase 6 — birds: mesh, LOD and temporal AA (2026-10-16)
+
+The flock gets bodies. Three representations of a bird, chosen by its projected
+wingspan `ρ` in one compute pass, and a temporal-AA resolve so that sub-pixel
+birds stop sparkling:
+
+| level | when | drawn as |
+| --- | --- | --- |
+| mesh | `ρ ≥ 7 px` | ten-triangle starling silhouette, instanced |
+| impostor | `1.5 ≤ ρ < 7 px` | screen-aligned quad carrying a bird-shaped Gaussian mixture |
+| splat | `ρ < 1.5 px` | the phase-5 coverage splat, unchanged |
+
+The mesh↔impostor threshold is a **cross-fade**: a bird within `BAND = 1 px` of
+`RHO_MESH = 6 px` is written to both lists with weights summing to one. Every
+level carries the same optical **mass** `a·ρ²`, so crossing a threshold changes a
+bird's *shape*, never how much light it absorbs. All the new shaders and the
+classifier live in `crates/murmur-render/shaders/` (`lod.wgsl`, `bird_pass.wgsl`
+shared setup, `bird_mesh.wgsl`, `impostor.wgsl`, `taa.wgsl`, and the rewritten
+`coverage.wgsl`); the geometry is `crates/murmur-render/src/mesh.rs`. The
+deviations from the reference are in `docs/model.md` ("Phase 6 adaptations").
+
+### How the LOD is built
+
+- **Classifier → indirect draws, no collect pass.** `lod.wgsl` runs one
+  invocation per bird, classifies it, and `atomicAdd`s into
+  `lod_args[level*4 + 1]` — the indirect `DrawIndirect` block's *instance count*.
+  The same atomic hands out the slot in `lod_lists[level*n + slot]`, so the count
+  the draw reads is the count the classifier wrote. There is no separate counts
+  buffer and no finalise pass. `lod_args` is `array<atomic<u32>>`; its vertex
+  counts (30/6/6) are rewritten from a 48-byte CPU template each frame, which
+  also resets the counts to zero.
+- **The mesh is mass-preserving.** `MEAN_AREA = 0.0851` is the mesh's mean
+  projected silhouette area in units of `ρ²`, measured from the vertex data over
+  viewing angles and wingbeat phases (`mesh::mean_projected_area`). The fragment
+  shader deposits a flat `a·weight / MEAN_AREA`, so on average a mesh bird
+  absorbs `a·ρ²` — the splat's mass. A test pins the measured number against the
+  shader's constant.
+- **The impostor is mass-preserving by construction.** A body plus two wing
+  lobes as normalised Gaussians, divided by the sum of their own integrals. The
+  wing lobes shorten by `cos(flap)`, so its silhouette sweeps through the
+  wingbeat like the mesh's.
+- **Wingbeat from the model.** The dihedral is `FLAP_DIHEDRAL ·
+  flap_amp · sin(flap_phase)` at the model's `FLAP_HZ = 10`; only the peak angle
+  `FLAP_DIHEDRAL = 0.7 rad` is the renderer's own constant, because the reference
+  draws dots and has no wings to rotate.
+- **No depth buffer, `cull_mode: None`.** The scene is optically thin; the
+  levels composite in draw order. Culling back faces would hide a wing's
+  underside seen from below, which is most of the flock.
+- **Chosen thresholds.** `RHO_SPLAT = 1.5` is a hard switch (both shapes are
+  under two pixels there); `RHO_MESH = 6` with `1 px` of cross-fade is where the
+  impostor stops resolving wing detail. `tests/lod_constants.rs` parses the
+  shader's copy of every threshold, the workgroup size and each pass's `LEVEL`
+  out of the WGSL and checks them against the Rust constants, so a bird can never
+  be classified into the wrong draw.
+
+### Temporal AA
+
+Each frame the bird passes are offset by a sub-pixel Halton(2,3) sample carried
+in `Scene.jitter`, and `taa.wgsl` blends the fresh HDR frame into a running image
+(`alpha = 1 - exp(-dt/TAA_TAU)`, `TAA_TAU = 0.1 s`); the tone map reads the
+accumulated target. There are no motion vectors, so the history is clamped into
+the current frame's 3×3 neighbourhood range before it is mixed — the standard
+stale-sample defence. `--still` drives the accumulation directly
+(`history_weight = 1/(frame+1)`) so a still converges to a box-filtered,
+24-sample image; the window keeps the exponential.
+
+### Acceptance — measured (2026-10-16)
+
+**No popping between levels — met.** `docs/lod-sweep.txt` is the controlled
+measurement: one bird held at a fixed screen point and pose while its projected
+wingspan is swept from `0.25` to `12 px` in `0.25 px` steps, with the exposure
+pinned and both the accumulation and the jitter off, so a step measures the
+level change and nothing else. "Change" and "ink" are in *black pixels* (one
+fully dark pixel of the frame = 1), which is the unit the flock is judged in.
+
+- The mesh cross-fade `[5, 7] px`: the worst step is **1.01 black px**, against a
+  **0.92** control — the worst step of the *same bird growing by the same amount*
+  away from the threshold. Ratio **1.10×**, under the stated `2×` jump
+  threshold. The bird grows by `2.9×` in that band; the picture changes by no
+  more than growth itself does.
+- The hard splat→impostor switch at `1.5 px`: **0.13** vs a **0.25** control.
+- `docs/flypast.mp4` is the recorded fly-past (960×540, `--birds 20000`, lens
+  zooming `1.00 → 0.35`). Its LOD counts run from `mesh=0 impostor=20000
+  splat=0` at the first frame to `mesh=20000 impostor=0 splat=0` at the last: in
+  six seconds **every bird in the flock crosses the mesh threshold** and the
+  frame-to-frame change shows no spike (`docs/capture-20k.txt`).
+
+The one real change the cross-fade carries is in the *ink*: the mesh concentrates
+`a·ρ²` through a silhouette, so at equal mass it is darker per pixel but covers
+far less area, and a bird resolving gets thinner. Across the `[5,7] px` band the
+ink moves `3.20 → 2.30` black px (**1.39×**) over eight `0.25 px` steps, i.e.
+gradually, not as a step. That is the documented physics-vs-dot difference
+(`docs/model.md`), not hidden here. It also does **not** show up in the flock's
+total darkening: the 20,000-bird still is `150.00` mean luminance in phase 5 and
+`148.96` in phase 6 (**0.7 %** darker), and the 1M still is `120.22` vs `119.90`
+(**0.3 %**). The level a bird is drawn at does not change how dark the flock is.
+
+**No obvious shimmer in a static distant flock — met.** `docs/shimmer.mp4` shows
+the same frozen flock four times wider (birds sub-pixel, all `splat`) with the
+accumulation on and off, side by side. Over 30 frames the raw frame-to-frame
+change is **293.8 black px/frame**; with the accumulation it is **68.5** — **77 %
+removed**. The in-motion fly-past is close behind: **28866 → 7126**, **75 %
+removed**. So the accumulation removes three-quarters of the sub-pixel change
+whether or not the flock is moving.
+
+**Frame time at 1M birds — reported.** All numbers are GPU timestamp queries
+(`renderer.frame_times_ms`), on a **GTX 1650 with Max-Q Design, NVIDIA driver
+615.78.08, Vulkan**, `1280×720`:
+
+- **1M birds: `12.19 ms/frame`** (`lod 0.43`, `birds 11.21`, `exposure 0.17`,
+  `taa 0.32`, `tonemap 0.06`), at `mesh=190 impostor=554516 splat=445370` — a
+  settled 1M flock is sub-pixel almost everywhere, so the cheap splat path does
+  the work. `docs/still-1m-p6.png` is that frame; the simulation to reach it cost
+  `3484 s` (`58.06 s` per simulated second), the phase-5 cost carried over.
+- **20,000 birds: `0.84 ms/frame`** (`birds 0.46`), all impostor
+  (`docs/still-20k-p6.png`).
+- **2,000 birds: `0.47 ms/frame`** (`birds 0.10`), all mesh
+  (`docs/still-2k-mesh.png`) — the mesh at work, wings and all.
+
+The timestamp deltas are **GPU** time; the wall-clock `--capture` cost is much
+higher because the still/capture paths read the frame back to the CPU every
+frame. Those readbacks (camera and exposure histogram) are the phase-9 target.
+
+### Checks
+
+`cargo fmt`, `cargo clippy --all-targets -- -D warnings` and `cargo test` all
+pass (`murmur-render`: 12 unit + `mesh_area` 3 + `lod_constants` 4 +
+`scene_layout` 1 + palettes/sky/png/camera; no GPU-only tests are skipped).
+
+### Open
+
+- **Temporal AA has no motion vectors.** The 3×3 neighbourhood clamp is the
+  whole stale-sample defence; a fast camera move will ghost. Motion-vector
+  reprojection needs a depth buffer and is left for later.
+- `--still` still prints nothing until it finishes; a 58-minute run should
+  stream progress the way `--coherence` does.
+- The camera readback and the exposure-histogram readback both stall the pipeline
+  every frame; phase 9 removes both.
+- The impostor's sigmas, the mesh's ten triangles and the peak dihedral are the
+  renderer's own shapes, fixed once and measured by `--lod-sweep`, not tuned per
+  scene.

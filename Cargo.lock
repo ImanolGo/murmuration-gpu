@@ -797,6 +797,8 @@ dependencies = [
 name = "murmuration-gpu"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "glam",
  "murmur-gpu",
  "murmur-render",
  "pollster",

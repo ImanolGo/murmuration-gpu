@@ -39,21 +39,24 @@ fn an_evening_runs_through_its_phases() {
         gpu.info().backend,
         gpu.info().driver
     );
-    // Two minutes, so the phase boundaries come quickly.
-    let world = World::new(2000, 3);
+    // Forty seconds and a thousand birds: the arrival needs only a few groups to
+    // fill that, so every phase fits in a short run. One sample per phase
+    // boundary, not per second: the interesting instants are the fill, the hold,
+    // the descent and the clear, and a readback costs more than the steps.
+    let duration = 40.0f32;
+    let world = World::new(1000, 3);
     let params = Params::from_snapshot(&world.snapshot());
     let mut sim = Sim::new(&gpu, params);
-    sim.enable_arc(&gpu, 2.0, 3);
+    sim.enable_arc(&gpu, duration / 60.0, 3);
     assert!(sim.arc_active());
 
-    let duration = 120.0f32;
     let mut samples = Vec::new();
-    // One sample a second: the landing at the end of the roosting phase is
-    // brief, and a coarse sample would miss it.
-    for step in 0..=(duration as u32) {
-        if step > 0 {
-            sim.advance_seconds(&gpu, 1.0)
+    let mut now = 0.0f32;
+    for target in [0.0f32, 4.0, 6.0, 20.0, 30.0, 34.0, 35.5, 38.0] {
+        if target > 0.0 {
+            sim.advance_seconds(&gpu, target - now)
                 .expect("stepping the evening");
+            now = target;
         }
         let birds = sim.read_birds(&gpu).expect("reading the flock");
         let state = sim.arc_state(&gpu).expect("reading the arc");
@@ -73,19 +76,17 @@ fn an_evening_runs_through_its_phases() {
         eprintln!("t={t:6.1}s {phase:9} live {n:5} z0 {z0:6.1}");
     }
 
-    let start = samples.first().expect("a first sample");
-    assert_eq!(start.2, 0, "the evening must start with an empty flock");
-
-    // Arrival: the flock grows towards the capacity.
-    let arrival_end = samples
-        .iter()
-        .find(|(_, phase, ..)| *phase == "display")
-        .expect("the display phase arrives");
-    assert!(
-        arrival_end.2 > 1000,
-        "the arrival only reached {} birds",
-        arrival_end.2
+    // Arrival: the flock grows from nothing and is full by the display.
+    assert_eq!(
+        samples[0].2, 0,
+        "the evening must start with an empty flock"
     );
+    let arriving = samples
+        .iter()
+        .filter(|(_, phase, ..)| *phase == "arrival")
+        .map(|(t, _, n, _)| (*t, *n))
+        .fold((0.0, 0), |acc, s| if s.1 > acc.1 { s } else { acc });
+    assert!(arriving.1 > 0, "no bird had arrived by t={}", arriving.0);
 
     // Display: the flock is at capacity and holding.
     let display = samples
@@ -93,12 +94,12 @@ fn an_evening_runs_through_its_phases() {
         .filter(|(_, phase, ..)| *phase == "display")
         .max_by_key(|(_, _, n, _)| *n)
         .expect("a display sample");
-    assert_eq!(display.2, 2000, "the display flock is not full");
+    assert_eq!(display.2, 1000, "the display flock is not full");
 
     // Roosting: the roost level sinks towards the reed tops as the flock pours
     // down. `remove_landed` itself retires a bird only once it is *below* the
     // reed tops (`z < REED_TOP`), which the descent reaches exactly at the
-    // roosting/night boundary — so the model's landing and its night clear
+    // roosting/night boundary, so the model's landing and its night clear
     // coincide. That is the reference's own behaviour (Z0 100, REED_TOP 3); it is
     // recorded here rather than "fixed".
     let roosting = samples

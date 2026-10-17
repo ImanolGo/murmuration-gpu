@@ -63,7 +63,13 @@ cargo run -p murmuration-gpu --release                          # a dusk flock w
 cargo run -p murmuration-gpu --release -- --birds 1000000       # one million birds
 cargo run -p murmuration-gpu --release -- --falcon              # add an autonomous falcon
 cargo run -p murmuration-gpu --release -- --seed 42             # a repeatable start
+cargo run -p murmuration-gpu --release -- --arc-minutes 1 --birds 3000   # a one-minute evening
+cargo run -p murmuration-gpu --release -- --no-arc              # hold the display phase
 ```
+
+The evening arc is on by default at 15 minutes: the flock arrives from its
+approach corridor, displays over the roost, pours down into the reeds as the
+light goes, and is cleared by night.
 
 Headless tools, without opening a window:
 
@@ -73,7 +79,17 @@ cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seed 42  # GPU
 cargo run -p murmuration-gpu --release -- --analyze 120 --birds 50000      # per-second flock statistics
 cargo run -p murmuration-gpu --release -- --coherence 600 --birds 100000   # long-run coherence run + verdict
 cargo run -p murmuration-gpu --release -- --still docs/still.png --birds 1000000  # one rendered frame
+cargo run -p murmuration-gpu --release -- --record DIR --birds 8000 --arc-minutes 3  # one evening as a time-lapse
+cargo run -p murmuration-gpu --release -- --agitation --birds 2000 --seed 42  # the zigzag-wave experiment
+cargo run -p murmuration-gpu --release -- --lod-sweep                         # the LOD transition measurement
 ```
+
+`--record DIR` renders one evening as a time-lapse, one frame per step, for
+`--frames` frames; [scripts/evening.sh](scripts/evening.sh) runs it and encodes
+the animated WebP and the still that this README shows. `--agitation` runs the
+agitation-wave experiment on the GPU and on the CPU oracle and prints both, and
+`--lod-sweep` sweeps one bird across every level-of-detail threshold and prints
+the transition measurement.
 
 `--analyze SECONDS` prints the same per-second line and summary as the CPU
 oracle (`cargo run -p murmur-ref --bin analyze --release -- …`); add
@@ -94,6 +110,21 @@ GTX 1650 (see [docs/progress.md](docs/progress.md), phase 5).
 At one seed the GPU output is *statistically* comparable to the CPU oracle, not
 identical: the two engines draw the random force from different generators (see
 [Limitations](#limitations)).
+
+## Tests
+
+```
+cargo test                     # everything, including the GPU tests
+prime-run cargo test           # the same, forced onto the discrete GPU
+cargo test -p murmur-ref       # the CPU oracle alone, no GPU needed
+```
+
+Some tests open a device and run real simulations: the `--analyze` and
+`--coherence` checks, the grid, the falcon, the agitation wave and the evening
+arc. They print `SKIP:` and pass when no adapter is found, but when one is
+present they want it to themselves — a window or a `--record` run in another
+terminal will make them many times slower, and on a hybrid-graphics laptop
+`prime-run` picks the discrete GPU instead of the integrated one.
 
 Planned controls:
 

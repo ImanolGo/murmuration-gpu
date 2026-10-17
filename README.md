@@ -21,10 +21,19 @@ prerecorded animation, no choreographed outline and no leader.
 foreground are procedural. The more complex folding motion in the supplied
 reference videos is still a target, not a reproduced result.*
 
+![One evening with the falcon: 8,000 birds arriving, folding, then dropping to the reeds](docs/evening-falcon.gif)
+
+*One evening minute in 8 s of clip: 8,000 birds, seed 1, falcon hunting. The
+frames come from the app's own `--record` mode at 960×540 on the GTX 1650 Max-Q
+(NVIDIA 615.78.08, Vulkan), encoded at 720 px. The falcon crosses the frame from
+about 5 s in; the bank, the calm mere and the reed banks come into view as the
+flock drops at dusk. [Same clip as a smaller animated WebP](docs/evening-falcon.webp).*
+
 > **Status:** early development. See [PLAN.md](PLAN.md) for the roadmap and
 > [Limitations](#limitations) for what this is and is not.
 
 [Current motion preview](docs/reference-revision.mp4) ·
+[Evening with the falcon (animated WebP)](docs/evening-falcon.webp) ·
 [Full-resolution view](docs/reference-revision.png) ·
 [Actual window profile](docs/window-profile-startup.txt)
 

@@ -1394,3 +1394,35 @@ adapter. The GTX 1650 window profile still needs re-running.
   reflect the sky; the GPU/CPU sky test now samples sky pixels only, and a new
   test checks the land is finite, darker than the sky and not a flat band.
 - The falcon is drawn before the reeds, so near stems occlude it.
+
+### README clip from the new landscape and silhouette (2026-10-17)
+
+Recorded on the **GTX 1650 Max-Q / NVIDIA 615.78.08 / Vulkan** — the software
+rasteriser above is what the numbers in this entry come from, but this recording
+is the real GPU. Headless, from the app's own `--record` mode, no window:
+
+```fish
+prime-run target/release/murmuration-gpu --record /tmp/evening --birds 8000 \
+    --seed 1 --arc-minutes 1 --frames 180 --falcon
+```
+
+180 frames written in 28.1 s. The first 14 frames are the arrival (17 birds live
+at t = 0.2 s) and are trimmed from the clip, which starts at source frame 14,
+i.e. `t ≈ 4.8 s`, and runs to the end of the evening minute; 8,000 birds live
+from frame 20 on.
+
+- **What the clip shows.** The golden arrival and the fold while the flock is
+  high (source frames 14–115); the falcon in frame as a separate silhouette from
+  roughly source frame 120, i.e. about 5 s into the clip; the bank, the mere and
+  the reed banks from source frame ≈150, i.e. about 6.8 s in, with the stars out
+  and the flock low over the water at the end.
+- **Files:** `docs/evening-falcon.gif` (720×405, 66 frames, 8.33 fps, 4.65 MB) and
+  `docs/evening-falcon.webp` (720×405, 165 frames, 20 fps, 2.24 MB). Encoded with
+  ffmpeg: `fps=8,scale=720:-1` plus `palettegen(max_colors=192,stats_mode=diff)`
+  and `paletteuse(dither=bayer:bayer_scale=4)` for the GIF; `libwebp_anim -q:v 72`
+  for the WebP. The WebP keeps every second frame and is both smaller and
+  smoother — the GIF is the inline fallback.
+- **Still open:** the falcon is only in frame for the last third of the evening,
+  so a clip that leads with the silhouette needs a tighter framing than
+  `--record` picks; nothing in this recording establishes that the strike itself
+  changes the flock's shape.

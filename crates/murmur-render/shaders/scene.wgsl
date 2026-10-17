@@ -20,9 +20,13 @@ struct Scene {
     // How visible the foreground reed bed is (0…1).
     reed: f32,
     falcon_pos: vec3<f32>,
+    // Bank angle [rad], right wing down when positive.
+    falcon_bank: f32,
+    // Velocity [m/s]: heading and wing pose (`shaders/falcon.wgsl`).
+    falcon_vel: vec3<f32>,
     // Uniform layout rounds a struct up to 16 bytes; this keeps the block the
     // same size in Rust and WGSL.
-    _pad6: f32,
+    _pad7: f32,
 };
 
 @group(0) @binding(0) var<uniform> scene: Scene;

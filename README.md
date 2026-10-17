@@ -182,8 +182,8 @@ Controls:
 | `A` / `D` or `Left` / `Right` | Orbit the observer horizontally around the roost     |
 | `c`                           | Step the observer bearing by 45°                     |
 | `r`                           | Reset camera distance, zoom and tilt                 |
-| `f`                           | Toggle the falcon (autonomous or mouse-steered)      |
-| Move the mouse                | Steer an active falcon (`f` or `--falcon` first)     |
+| `f`                           | Cycle the falcon: hunting → mouse-steered → off      |
+| Move the mouse                | Steer the falcon once `f` has put it in mouse mode   |
 
 ## How it works
 

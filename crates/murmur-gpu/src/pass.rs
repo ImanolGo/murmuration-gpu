@@ -12,7 +12,7 @@ use wgpu::{
 
 /// The passes of one simulation step, in the order they are recorded
 /// (`shaders/sim.wgsl` and `shaders/grid.wgsl`).
-pub const STEP_PASSES: [&str; 11] = [
+pub const STEP_PASSES: [&str; 12] = [
     "tick",
     "grid_clear",
     "grid_histogram",
@@ -23,6 +23,7 @@ pub const STEP_PASSES: [&str; 11] = [
     "grid_sort_buckets",
     "prepare_decisions",
     "decide",
+    "decide_wide",
     "integrate",
 ];
 

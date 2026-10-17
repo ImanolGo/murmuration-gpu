@@ -48,7 +48,9 @@ fn procedural_sky_pixels_match_the_cpu_reference() {
         );
         renderer.render(&gpu, &target.view, 0, 1.0 / 60.0);
         let pixels = renderer.read_target(&gpu, &target, width, height);
-        for (x, y) in [(3, 3), (45, 20), (80, 60)] {
+        // Sky pixels only: below ~3.5° the landscape (`landscape.wgsl`, which
+        // has no CPU mirror) is composited on top.
+        for (x, y) in [(3, 3), (45, 20), (80, 40)] {
             let nx = (x as f32 + 0.5) / width as f32 * 2.0 - 1.0;
             let ny = 1.0 - (y as f32 + 0.5) / height as f32 * 2.0;
             let t = (camera.fov * 0.5).tan();
@@ -75,4 +77,54 @@ fn procedural_sky_pixels_match_the_cpu_reference() {
             }
         }
     }
+}
+
+/// The land under the horizon: finite, darker than the sky above it, and not a
+/// flat band — the water mirrors the sky, so the ground varies.
+#[test]
+fn landscape_sits_below_a_brighter_sky() {
+    let gpu = match device::headless(wgpu::PowerPreference::HighPerformance) {
+        Ok(gpu) => gpu,
+        Err(DeviceError::NoAdapter(error)) => {
+            eprintln!("SKIP: no GPU for landscape test ({error})");
+            return;
+        }
+        Err(error) => panic!("{error}"),
+    };
+    let (width, height) = (160, 90);
+    let mut camera = Camera::new();
+    camera.forward = Vec3::new(0.0, 1.0, -0.02).normalize();
+    camera.right = camera.forward.cross(Vec3::Z).normalize();
+    camera.up = camera.right.cross(camera.forward);
+    let sim = Sim::new(&gpu, Params::new(0, 1));
+    let mut renderer =
+        Renderer::new(&gpu, width, height, wgpu::TextureFormat::Rgba8UnormSrgb).unwrap();
+    renderer.set_birds(&gpu, sim.bird_buffer(), 0);
+    renderer.set_jitter(Some([0.0; 2]));
+    renderer.set_history_weight(Some(1.0));
+    let target = renderer.create_target(&gpu, width, height);
+    renderer.set_scene(
+        &gpu,
+        Scene::from_camera(&camera, width, height, 0.45, renderer.exposure(), 0.0, 10.0),
+    );
+    renderer.render(&gpu, &target.view, 0, 1.0 / 60.0);
+    let pixels = renderer.read_target(&gpu, &target, width, height);
+    let row_mean = |y: u32| -> f32 {
+        (0..width)
+            .map(|x| {
+                let i = ((y * width + x) * 4) as usize;
+                (pixels[i] as f32 + pixels[i + 1] as f32 + pixels[i + 2] as f32) / 3.0
+            })
+            .sum::<f32>()
+            / width as f32
+    };
+    let sky = row_mean(2);
+    let ground: Vec<f32> = (height * 3 / 4..height).map(row_mean).collect();
+    assert!(sky > 60.0, "the dusk sky is lit: {sky}");
+    for g in &ground {
+        assert!(g.is_finite() && *g < sky, "ground {g} vs sky {sky}");
+    }
+    let spread = ground.iter().cloned().fold(f32::MIN, f32::max)
+        - ground.iter().cloned().fold(f32::MAX, f32::min);
+    assert!(spread > 1.0, "the ground is a flat band ({spread})");
 }

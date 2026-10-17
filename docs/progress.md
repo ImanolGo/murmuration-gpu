@@ -1344,3 +1344,53 @@ with the same NVIDIA/Vulkan GPU; it is a shimmer measurement, not window FPS.
 - **Root cause of the falcon FPS drop fixed:** `Renderer::render` called `self.sim.falcon(&self.gpu)` on every frame when a falcon was active, which allocated a staging buffer and blocked on `gpu.wait_bounded`. Worse, `WindowEvent::CursorMoved` called `self.sim.steer_falcon`, which also called `self.falcon(gpu)` and stalled the CPU on every mouse movement. `FlockTracker` now copies the 96-byte `Falcon` record alongside the bird sample in its single non-blocking staging readback, `steer_falcon` performs a direct 16-byte `queue.write_buffer` on `(mode, aim)` with zero readback, `Renderer::set_birds` and `FlockTracker` cache bind groups across ping-pong buffers, and `falcon_reduce_kernel` filters `src[i].live != 0u`.
 - **Measured `--falcon` window profile:** `prime-run target/release/murmuration-gpu --falcon --profile-window 12` on GTX 1650 Max-Q / NVIDIA 615.78.08 / Vulkan presented **719 frames in 12.002 s = 59.91 FPS** (simulated 11.990 s; frame interval p50 16.630 ms, p95 18.866 ms; GPU sim step p50 1.626 ms, p95 1.805 ms).
 - **Interactive camera and spontaneous sheet-folding:** Restored natural `FOV_MIN = 16°` (`FOV_V = 42°`), added mouse-drag orbit/tilt, wheel/`+`/`-` zoom, `WASD`/Arrow orbit & dolly, `c` bearing step, `r` reset, `f` falcon toggle, and `Space` pause. Added arc-mode longitudinal cohesion relaxation, boundary shear waves, and spontaneous border turn waves in both `murmur-ref` and `murmur-gpu` (keeping `--no-arc` oracle runs bit-exact). Remaining items are organized in `PLAN.md`.
+
+## Falcon-strike frame drop (real cause), falcon silhouette and the landscape (2026-10-17)
+
+Measured on **llvmpipe (Mesa 25.2.8, LLVM 20.1.2) / Vulkan**, a software
+rasteriser, because no GPU was available in this session; absolute numbers are
+not representative of the GTX 1650, only the before/after ratios on the same
+adapter. The GTX 1650 window profile still needs re-running.
+
+- **The previous entry's fix did not match the committed code.** It describes a
+  merged `gather_grid_both` walk and a normal/wide decision partition, but the
+  committed `sim.wgsl` has neither. This entry replaces both with the changes
+  below.
+- **Cause, measured:** after the stoop the flash expansion thins the flock and
+  every bird's adaptive radius grows (`radius_step`). At 4,000 birds the share
+  of birds with `R ≥ 2 m` goes from ~15% to ~65%, and the `2R` box walked per
+  decision from ~300 to ~1,400 one-metre cells, almost all empty. `decide`
+  rose from 3.49 to 6.27 ms/step (`--bench --birds 4000 --seconds 12|25
+  --falcon --no-arc --steps 40`). The few dozen stragglers whose box exceeds the
+  live count also took the flock-wide fallback serially, one thread each.
+- **Grid cell sized from the flock** (`grid::cell_for(n)`, 1–2 m, ≈1.4× the
+  settled radius): post-strike `decide` 6.27 → **3.59 ms/step**, pre-strike
+  unchanged (3.49 → 3.40). Acceleration only: the exact distance test keeps the
+  neighbour set identical for any cell.
+- **Position-first candidate reads:** walks read the 12-byte `pos` and load the
+  96-byte `Bird` only for a kept neighbour; the redundant `live` test on grid
+  candidates is gone (`grid_histogram` never buckets inactive birds).
+- **Wide queue, one workgroup per straggler:** `prepare_decisions_kernel` sends
+  a bird whose `2R` box would take the fallback (exactly `gather_centrality`'s
+  test) to a second queue; `decide_wide_kernel` scans the live list with 128
+  lanes and a tree sum. Same neighbours, different float summation order (as
+  between the grid and brute-force walks). The fallback counter counts the same
+  walks as before. New `--bench` pass: `decide_wide`.
+- **No catch-up spiral:** `MAX_FRAME_STEPS` 40 → 10. Real time down to 20 fps;
+  below that the flock slows instead of scheduling 4× the work into the next
+  frame.
+- **Mouse no longer hijacks the falcon:** `f` cycles hunting → mouse → off; the
+  cursor only steers in mouse mode, and the aiming plane uses a per-frame flock
+  centre instead of rebuilding 4,096 predicted positions per cursor event.
+- **Falcon silhouette** (`shaders/falcon.wgsl`, `src/falcon.rs`): analytic
+  peregrine (wing planforms in their own flapping planes, tail fan, ellipsoid
+  body/head), heading from velocity, bank from the turn rate, wings folded in the
+  stoop. Drawn at ≥16 px span so it reads at 150–300 m; rendering only. The
+  scene block grows to 144 bytes (`falcon_bank`, `falcon_vel`).
+- **Landscape** (`shaders/landscape.wgsl`, rewritten `reeds.wgsl`): a bank, a
+  calm mere mirroring the sky and far shore, hills/woods/tree lines with aerial
+  perspective, two reed banks with plumes; stars fixed to the sky. The ground
+  band moved out of `atmosphere_sky` (and its CPU mirror) so the water can
+  reflect the sky; the GPU/CPU sky test now samples sky pixels only, and a new
+  test checks the land is finite, darker than the sky and not a flat band.
+- The falcon is drawn before the reeds, so near stems occlude it.

@@ -41,6 +41,7 @@ use murmur_gpu::device::{self, DeviceError, Gpu};
 use murmur_gpu::sim::Sim;
 use murmur_gpu::{FLAP_AMPLITUDE, Turning, World, agitation, analyze, bench, coherence, parity};
 use murmur_render::camera::{Camera, FlockView};
+use murmur_render::falcon::FalconMotion;
 use murmur_render::mesh::WINGSPAN;
 use murmur_render::png;
 use murmur_render::renderer::{LOD_LEVELS, Renderer as FrameRenderer, Scene, TIMESTAMP_SLOTS};
@@ -518,9 +519,10 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
     renderer.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
     let target = renderer.create_target(&gpu, WIDTH, HEIGHT);
     let falcon = if args.falcon {
-        let f = sim.falcon(&gpu)?.position();
+        let record = sim.falcon(&gpu)?;
+        let f = record.position();
         println!("# falcon at ({:.0}, {:.0}, {:.0})", f.x, f.y, f.z);
-        Some(f)
+        Some((f, Vec3::from_array(record.vel), 0.0))
     } else {
         None
     };
@@ -535,7 +537,7 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
         FLAP_AMPLITUDE,
         sim.time(),
     )
-    .with_falcon(falcon)
+    .with_falcon_motion(falcon)
     .with_reeds(murmur_render::sky::reed_visibility(&camera));
     // The first frame fixes the exposure from the flock's 80th-percentile
     // optical depth; the rest let it settle, and let the temporal accumulation
@@ -959,8 +961,9 @@ fn capture_pass(
                 FLAP_AMPLITUDE,
                 sim.time(),
             )
-            .with_falcon(if sim.falcon_active() {
-                Some(sim.falcon(gpu)?.position())
+            .with_falcon_motion(if sim.falcon_active() {
+                let record = sim.falcon(gpu)?;
+                Some((record.position(), Vec3::from_array(record.vel), 0.0))
             } else {
                 None
             })
@@ -1316,6 +1319,7 @@ fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
         FrameRenderer::new(&gpu, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8UnormSrgb)?;
     renderer.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
     let target = renderer.create_target(&gpu, WIDTH, HEIGHT);
+    let mut falcon_motion = FalconMotion::default();
     let mut camera = Camera::new();
     let mut scene;
 
@@ -1337,8 +1341,15 @@ fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
             WIDTH as f32 / HEIGHT as f32,
         );
         let falcon = if sim.falcon_active() {
-            Some(sim.falcon(&gpu)?.position())
+            let record = sim.falcon(&gpu)?;
+            let vel = Vec3::from_array(record.vel);
+            Some((
+                record.position(),
+                vel,
+                falcon_motion.update(vel, per_frame).1,
+            ))
         } else {
+            falcon_motion.reset();
             None
         };
         scene = Scene::from_camera(
@@ -1350,7 +1361,7 @@ fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
             FLAP_AMPLITUDE,
             sim.time(),
         )
-        .with_falcon(falcon)
+        .with_falcon_motion(falcon)
         .with_reeds(murmur_render::sky::reed_visibility(&camera));
         let evening = scene.evening;
         renderer.set_scene(&gpu, scene);
@@ -1563,6 +1574,14 @@ struct Renderer {
     camera: Camera,
     tracker: FlockTracker,
     birds: usize,
+    /// Whether the falcon follows the mouse (`f` cycles off → autonomous →
+    /// mouse → off). Moving the mouse no longer hijacks an autonomous falcon.
+    falcon_mouse: bool,
+    /// The flock's predicted centre from the last frame, for the mouse-steered
+    /// falcon's aiming plane (computed once per frame, not per cursor event).
+    flock_centre: Vec3,
+    /// The falcon's drawn heading and bank, eased from the telemetry.
+    falcon_motion: FalconMotion,
     /// The run's seed and preferred height, for a window-spawned falcon.
     seed: u64,
     z0: f32,
@@ -1580,7 +1599,13 @@ struct Renderer {
 
 /// The largest catch-up the window will simulate in one frame, so a stall does
 /// not turn into one enormous submission.
-const MAX_FRAME_STEPS: u32 = 40;
+///
+/// Ten steps is 50 ms of flight: real time down to 20 fps. It used to be 40,
+/// which let one slow frame (a falcon strike) schedule four times the GPU work
+/// into the next, which made that frame slower still — a spiral that turned a
+/// brief cost bump into seconds of stutter. Below 20 fps the flock now runs in
+/// gentle slow motion instead, and recovers as soon as the GPU catches up.
+const MAX_FRAME_STEPS: u32 = 10;
 
 /// Keep the fractional integration step between frames. Rounding down each
 /// frame loses 10% of real time at 60 Hz; forcing a step runs too fast above 200 Hz.
@@ -1711,6 +1736,9 @@ impl Renderer {
             last_cursor: None,
             profile,
             profile_done: false,
+            falcon_mouse: false,
+            flock_centre: Vec3::new(0.0, 0.0, world.z0),
+            falcon_motion: FalconMotion::default(),
             seed: args.seed,
             z0: world.z0,
             args: args.clone(),
@@ -1796,6 +1824,9 @@ impl Renderer {
         spans[2] = mark.elapsed().as_secs_f64() * 1000.0;
         mark = Instant::now();
         let positions = self.tracker.predicted_positions(self.sim.time());
+        if !positions.is_empty() {
+            self.flock_centre = positions.iter().copied().sum::<Vec3>() / positions.len() as f32;
+        }
         let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
         self.camera.update(
             &FlockView {
@@ -1820,8 +1851,13 @@ impl Renderer {
         self.frame
             .set_birds(&self.gpu, self.sim.bird_buffer(), self.sim.len() as u32);
         let falcon = if self.sim.falcon_active() {
-            self.tracker.predicted_falcon(self.sim.time())
+            self.tracker.predicted_falcon(self.sim.time()).map(|pos| {
+                let vel = self.tracker.falcon_velocity().unwrap_or(Vec3::Y);
+                let (vel, bank) = self.falcon_motion.update(vel, dt);
+                (pos, vel, bank)
+            })
         } else {
+            self.falcon_motion.reset();
             None
         };
         self.frame.set_scene(
@@ -1835,7 +1871,7 @@ impl Renderer {
                 FLAP_AMPLITUDE,
                 self.sim.time(),
             )
-            .with_falcon(falcon)
+            .with_falcon_motion(falcon)
             .with_reeds(murmur_render::sky::reed_visibility(&self.camera)),
         );
         spans[4] = mark.elapsed().as_secs_f64() * 1000.0;
@@ -1898,16 +1934,26 @@ impl ApplicationHandler for App {
                     Key::Named(NamedKey::Space) if !event.repeat => {
                         renderer.paused = !renderer.paused;
                     }
-                    // `f` toggles the falcon (autonomous or mouse-steered).
+                    // `f` cycles the falcon: off → hunting on its own → following
+                    // the mouse → off.
                     Key::Character(ref key) if key.as_str() == "f" && !event.repeat => {
-                        if renderer.sim.falcon_active() {
-                            renderer
-                                .sim
-                                .write_falcon(&renderer.gpu, &murmur_gpu::falcon::Falcon::absent());
-                        } else {
+                        if !renderer.sim.falcon_active() {
                             renderer
                                 .sim
                                 .spawn_falcon(&renderer.gpu, renderer.seed, renderer.z0);
+                            renderer.falcon_mouse = false;
+                            println!(
+                                "murmuration-gpu: falcon hunting (f again: steer with the mouse)"
+                            );
+                        } else if !renderer.falcon_mouse {
+                            renderer.falcon_mouse = true;
+                            println!("murmuration-gpu: falcon follows the mouse (f again: remove)");
+                        } else {
+                            renderer
+                                .sim
+                                .write_falcon(&renderer.gpu, &murmur_gpu::falcon::Falcon::absent());
+                            renderer.falcon_mouse = false;
+                            renderer.falcon_motion.reset();
                         }
                     }
                     // `c` steps the observer bearing around the roost; `r` resets view.
@@ -1974,17 +2020,12 @@ impl ApplicationHandler for App {
                     return;
                 }
                 renderer.last_cursor = Some((x, y));
-                // Watching should not accidentally summon a predator. Press f
-                // (or use --falcon) first, then move the mouse to steer it.
-                if !renderer.sim.falcon_active() {
+                // Watching should not accidentally summon or hijack a predator:
+                // only a falcon switched to mouse mode (press f twice) follows.
+                if !renderer.sim.falcon_active() || !renderer.falcon_mouse {
                     return;
                 }
-                let positions = renderer.tracker.predicted_positions(renderer.sim.time());
-                let plane = if positions.is_empty() {
-                    glam::Vec3::Z * renderer.z0
-                } else {
-                    positions.iter().copied().sum::<glam::Vec3>() / positions.len() as f32
-                };
+                let plane = renderer.flock_centre;
                 let target = renderer.camera.cursor_to_plane(
                     x,
                     y,

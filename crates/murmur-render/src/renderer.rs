@@ -123,7 +123,12 @@ pub struct Scene {
     pub reed: f32,
     /// The falcon's position when `falcon` is 1 \[m\].
     pub falcon_pos: [f32; 3],
-    pub _pad6: f32,
+    /// The falcon's bank angle \[rad\], positive with the right wing down.
+    pub falcon_bank: f32,
+    /// The falcon's velocity \[m/s\]: its heading, and its wing pose (a stoop
+    /// tucks the wings).
+    pub falcon_vel: [f32; 3],
+    pub _pad7: f32,
 }
 
 impl Scene {
@@ -157,7 +162,9 @@ impl Scene {
             falcon: 0.0,
             reed: 0.0,
             falcon_pos: [0.0, 0.0, 0.0],
-            _pad6: 0.0,
+            falcon_bank: 0.0,
+            falcon_vel: [0.0, 0.0, 0.0],
+            _pad7: 0.0,
         }
     }
 
@@ -167,16 +174,28 @@ impl Scene {
         self
     }
 
-    /// Sets the falcon the coverage pass draws, or clears it.
-    pub fn with_falcon(mut self, position: Option<glam::Vec3>) -> Self {
-        match position {
-            Some(p) => {
+    /// Sets the falcon the coverage pass draws, or clears it. Without a
+    /// velocity the silhouette glides level along +y; prefer
+    /// [`Scene::with_falcon_motion`].
+    pub fn with_falcon(self, position: Option<glam::Vec3>) -> Self {
+        self.with_falcon_motion(position.map(|p| (p, glam::Vec3::Y * 15.0, 0.0)))
+    }
+
+    /// Sets the falcon from its position, velocity and bank angle (see
+    /// [`crate::falcon::FalconMotion`]), or clears it.
+    pub fn with_falcon_motion(mut self, motion: Option<(glam::Vec3, glam::Vec3, f32)>) -> Self {
+        match motion {
+            Some((p, v, bank)) => {
                 self.falcon = 1.0;
                 self.falcon_pos = p.to_array();
+                self.falcon_vel = v.to_array();
+                self.falcon_bank = bank;
             }
             None => {
                 self.falcon = 0.0;
-                self.falcon_pos = [0.0, 0.0, 0.0];
+                self.falcon_pos = [0.0; 3];
+                self.falcon_vel = [0.0; 3];
+                self.falcon_bank = 0.0;
             }
         }
         self
@@ -224,7 +243,7 @@ pub struct Renderer {
 
     /// The starling mesh, upload once: the same ten triangles every instance.
     mesh_vertices: Buffer,
-    /// The तीन per-level instance lists: `(bird index, weight)` pairs.
+    /// The three per-level instance lists: `(bird index, weight)` pairs.
     lod_lists: Option<Buffer>,
     /// The three `DrawIndirect` argument blocks the LOD pass counts into.
     lod_args: Buffer,
@@ -312,8 +331,9 @@ impl Renderer {
         let scene_wgsl = include_str!("../shaders/scene.wgsl");
         let sky_wgsl = include_str!("../shaders/sky.wgsl");
         let sky_source = format!(
-            "{scene_wgsl}\n{sky_wgsl}\n{}\n{}",
+            "{scene_wgsl}\n{sky_wgsl}\n{}\n{}\n{}",
             include_str!("../shaders/atmosphere.wgsl"),
+            include_str!("../shaders/landscape.wgsl"),
             include_str!("../shaders/sky_pass.wgsl")
         );
         let sky_module = shader(device, "sky", &sky_source);
@@ -1233,15 +1253,17 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            if self.scene.reed > 0.002 {
-                pass.set_pipeline(&self.reeds);
-                pass.set_bind_group(0, &self.falcon_bind, &[]);
-                pass.draw(0..3, 0..1);
-            }
+            // The falcon is in the sky, the reeds a few metres away: falcon
+            // first, so a stem in front of it hides it rather than the reverse.
             if self.scene.falcon > 0.5 {
                 pass.set_pipeline(&self.falcon);
                 pass.set_bind_group(0, &self.falcon_bind, &[]);
                 pass.draw(0..6, 0..1);
+            }
+            if self.scene.reed > 0.002 {
+                pass.set_pipeline(&self.reeds);
+                pass.set_bind_group(0, &self.falcon_bind, &[]);
+                pass.draw(0..3, 0..1);
             }
         }
         if let Some(set) = &self.timestamps {

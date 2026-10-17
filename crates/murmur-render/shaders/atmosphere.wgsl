@@ -1,4 +1,5 @@
 // Mirrors atmosphere.rs::colour: world-direction cloud layers and low-sun light.
+// Sky only; the land is `landscape.wgsl`.
 // Three value-noise octaves; no ray marching, no external photographic texture.
 fn sky_hash(cell: vec2<i32>) -> f32 {
     let u = bitcast<vec2<u32>>(cell);
@@ -35,13 +36,9 @@ fn atmosphere_sky(ray: vec3<f32>) -> vec3<f32> {
     let edge = clamp(0.55 + (sky_clouds(uv + vec2<f32>(0.045, 0.025)) - field) * 4.0, 0.15, 1.0);
     let cloud = mix(vec3<f32>(0.24, 0.26, 0.34), vec3<f32>(0.64, 0.58, 0.62), edge) * light
         + vec3<f32>(0.22, 0.085, 0.030) * (pow(facing, 4.0) * horizon_glow * light);
-    var result = mix(sky, cloud, cover)
+    let result = mix(sky, cloud, cover)
         + vec3<f32>(0.22, 0.11, 0.035) * (exp(-(1.0 - facing) * 10.0) * light * (1.0 - cover));
-    let bearing = atan2(ray.y, ray.x);
-    let skyline = 0.002 + sky_noise(vec2<f32>(bearing * 2.5, 7.0)) * 0.006;
-    if ray.z < skyline {
-        let ground = vec3<f32>(0.012, 0.018, 0.024) * light + sky * 0.06;
-        result = mix(ground, result, smoothstep(skyline - 0.003, skyline + 0.001, ray.z));
-    }
+    // The land below the horizon is `landscape.wgsl`, composited by the sky
+    // pass; this is the sky alone, so it can also be mirrored in water.
     return result;
 }

@@ -1,5 +1,6 @@
 //! CPU oracle for the procedural sky in shaders/atmosphere.wgsl. Rendering only:
-//! soft cloud layers, low-sun scattering and a distant horizon, not flock forces.
+//! soft cloud layers and low-sun scattering, not flock forces. The land below
+//! the horizon is `shaders/landscape.wgsl`, which has no CPU mirror.
 use glam::{Vec2, Vec3};
 
 fn smooth(lo: f32, hi: f32, x: f32) -> f32 {
@@ -45,15 +46,9 @@ pub fn colour(ray: Vec3, evening: f32, time: f32) -> Vec3 {
     let edge = (0.55 + (clouds(uv + Vec2::new(0.045, 0.025)) - field) * 4.0).clamp(0.15, 1.0);
     let cloud = Vec3::new(0.24, 0.26, 0.34).lerp(Vec3::new(0.64, 0.58, 0.62), edge) * light
         + Vec3::new(0.22, 0.085, 0.030) * (facing.powi(4) * horizon_glow * light);
-    let mut result = sky.lerp(cloud, cover)
-        + Vec3::new(0.22, 0.11, 0.035) * ((-(1.0 - facing) * 10.0).exp() * light * (1.0 - cover));
-    let bearing = ray.y.atan2(ray.x);
-    let skyline = 0.002 + noise(Vec2::new(bearing * 2.5, 7.0)) * 0.006;
-    if ray.z < skyline {
-        let ground = Vec3::new(0.012, 0.018, 0.024) * light + sky * 0.06;
-        result = ground.lerp(result, smooth(skyline - 0.003, skyline + 0.001, ray.z));
-    }
-    result
+    // Sky only: the land below the horizon is `shaders/landscape.wgsl`.
+    sky.lerp(cloud, cover)
+        + Vec3::new(0.22, 0.11, 0.035) * ((-(1.0 - facing) * 10.0).exp() * light * (1.0 - cover))
 }
 
 #[cfg(test)]

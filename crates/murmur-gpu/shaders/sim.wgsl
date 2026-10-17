@@ -260,17 +260,18 @@ fn gather_grid(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> 
                     if j == i {
                         continue;
                     }
-                    let other = src[j];
-                    if other.live == 0u {
+                    // `sorted` only holds live birds (grid_histogram skips the
+                    // rest), so no `live` test. Read the 12-byte position first
+                    // and the 96-byte record only for a kept neighbour: most
+                    // candidates in the walked cells are rejected.
+                    let q = src[j].pos;
+                    if any(cell_of(q) != cell) {
                         continue;
                     }
-                    if any(cell_of(other.pos) != cell) {
-                        continue;
-                    }
-                    let d = other.pos - p;
+                    let d = q - p;
                     let d2 = dot(d, d);
                     if d2 <= r2 {
-                        acc = acc_add(acc, other, d, sqrt(d2), f_i, time);
+                        acc = acc_add(acc, src[j], d, sqrt(d2), f_i, time);
                     }
                 }
             }
@@ -299,14 +300,11 @@ fn gather_grid_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
                     if j == i {
                         continue;
                     }
-                    let other = src[j];
-                    if other.live == 0u {
+                    let q = src[j].pos;
+                    if any(cell_of(q) != cell) {
                         continue;
                     }
-                    if any(cell_of(other.pos) != cell) {
-                        continue;
-                    }
-                    let d = other.pos - p;
+                    let d = q - p;
                     let d2 = dot(d, d);
                     if d2 <= r2 {
                         cen = cen_add(cen, d, sqrt(d2));
@@ -327,14 +325,13 @@ fn gather_bruteforce(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f3
         if j == i {
             continue;
         }
-        let other = src[j];
-        if other.live == 0u {
+        if src[j].live == 0u {
             continue;
         }
-        let d = other.pos - p;
+        let d = src[j].pos - p;
         let d2 = dot(d, d);
         if d2 <= r2 {
-            acc = acc_add(acc, other, d, sqrt(d2), f_i, time);
+            acc = acc_add(acc, src[j], d, sqrt(d2), f_i, time);
         }
     }
     return acc;
@@ -369,10 +366,9 @@ fn gather_live(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> 
     for (var s = 0u; s < offsets[P.buckets]; s += 1u) {
         let j = sorted[s];
         if j == i { continue; }
-        let other = src[j];
-        let d = other.pos - p;
+        let d = src[j].pos - p;
         let d2 = dot(d, d);
-        if d2 <= r2 { acc = acc_add(acc, other, d, sqrt(d2), f_i, time); }
+        if d2 <= r2 { acc = acc_add(acc, src[j], d, sqrt(d2), f_i, time); }
     }
     return acc;
 }
@@ -659,10 +655,33 @@ fn prepare_decisions_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         // After scatter, `bucket` and `counts` are scratch space: queries only
         // read `offsets` and `sorted`. Pack the ~10% of birds due a decision so
         // whole warps do useful work instead of divergent, mostly idle lanes.
-        let slot = atomicAdd(&counts[0], 1u);
-        bucket[slot] = i;
+        //
+        // A bird whose `2R_i` box would take the flock-wide fallback goes to a
+        // second queue at the tail of `bucket`, decided by
+        // `decide_wide_kernel` with a whole workgroup per bird. Done serially,
+        // one such bird scans the whole flock twice in one thread, and that one
+        // thread holds the entire `decide` dispatch: after a falcon strike the
+        // scattered birds' radii grow and this was the frame-rate collapse.
+        if is_wide(b) {
+            let slot = atomicAdd(&counts[1], 1u);
+            bucket[P.n - 1u - slot] = i;
+        } else {
+            let slot = atomicAdd(&counts[0], 1u);
+            bucket[slot] = i;
+        }
     }
     dst[i] = b;
+}
+
+// Whether this bird's centrality walk (`2R_i`, the larger of its two) would
+// take the flock-wide fallback in `gather_centrality`. Its `R_i` walk is then
+// either on the grid or wide as well; both give the same neighbour set as the
+// flock-wide scan, which tests only `d2 <= r2`, so the wide kernel may scan.
+fn is_wide(b: Bird) -> bool {
+    let r_cen = 2.0 * b.radius;
+    let lo = cell_of(b.pos - vec3<f32>(r_cen));
+    let hi = cell_of(b.pos + vec3<f32>(r_cen));
+    return grid_span(lo, hi) > f32(offsets[P.buckets]);
 }
 
 @compute @workgroup_size(256)
@@ -672,6 +691,101 @@ fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let i = bucket[gid.x];
     dst[i] = decide(i, dst[i], clock.time);
+}
+
+// --- the wide queue: one workgroup per straggler ---------------------------
+//
+// The same neighbourhood `gather_live` + `gather_live_centrality` find, split
+// across `WIDE_THREADS` lanes that each take every `WIDE_THREADS`-th live bird
+// of the sorted list, then a tree sum. Only the summation order differs from
+// the serial walk (float addition), as it already does between the grid and
+// brute-force walks. Lanes read only the 12-byte position of each candidate.
+
+const WIDE_THREADS: u32 = 128u;
+// Workgroups `sim.rs` dispatches; each strides over the wide queue.
+const WIDE_GROUPS: u32 = 64u;
+
+var<workgroup> wide_n: u32;
+var<workgroup> w_sep: array<vec4<f32>, WIDE_THREADS>;
+var<workgroup> w_coh: array<vec4<f32>, WIDE_THREADS>;
+var<workgroup> w_align: array<vec4<f32>, WIDE_THREADS>;
+var<workgroup> w_csum: array<vec4<f32>, WIDE_THREADS>;
+var<workgroup> w_n: array<vec4<u32>, WIDE_THREADS>;
+var<workgroup> w_m: array<vec2<u32>, WIDE_THREADS>;
+
+@compute @workgroup_size(128)
+fn decide_wide_kernel(
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(workgroup_id) wid: vec3<u32>,
+) {
+    let t = lid.x;
+    if t == 0u {
+        wide_n = atomicLoad(&counts[1]);
+    }
+    let count = workgroupUniformLoad(&wide_n);
+    let live = offsets[P.buckets];
+    let time = clock.time;
+    for (var k = wid.x; k < count; k += WIDE_GROUPS) {
+        let i = bucket[P.n - 1u - k];
+        let b = dst[i];
+        let p = b.pos;
+        let f_i = forward(b.vel);
+        let r2 = b.radius * b.radius;
+        let r_cen = 2.0 * b.radius;
+        let r_cen2 = r_cen * r_cen;
+
+        var acc = acc_empty();
+        var cen = cen_empty();
+        for (var s = t; s < live; s += WIDE_THREADS) {
+            let j = sorted[s];
+            if j == i {
+                continue;
+            }
+            let d = src[j].pos - p;
+            let d2 = dot(d, d);
+            if d2 <= r_cen2 {
+                let dist = sqrt(d2);
+                cen = cen_add(cen, d, dist);
+                if d2 <= r2 {
+                    acc = acc_add(acc, src[j], d, dist, f_i, time);
+                }
+            }
+        }
+        w_sep[t] = vec4<f32>(acc.sep, acc.zigzag_sign_sum);
+        w_coh[t] = vec4<f32>(acc.coh, 0.0);
+        w_align[t] = vec4<f32>(acc.align, 0.0);
+        w_csum[t] = vec4<f32>(cen.csum, 0.0);
+        w_n[t] = vec4<u32>(acc.n_all, acc.n_star, acc.n_align, acc.zigzag_neighbours);
+        w_m[t] = vec2<u32>(acc.returning_neighbours, cen.n_g);
+        workgroupBarrier();
+        for (var h = WIDE_THREADS / 2u; h > 0u; h = h / 2u) {
+            if t < h {
+                w_sep[t] += w_sep[t + h];
+                w_coh[t] += w_coh[t + h];
+                w_align[t] += w_align[t + h];
+                w_csum[t] += w_csum[t + h];
+                w_n[t] += w_n[t + h];
+                w_m[t] += w_m[t + h];
+            }
+            workgroupBarrier();
+        }
+        if t == 0u {
+            let total = Acc(
+                w_sep[0].xyz, w_coh[0].xyz, w_align[0].xyz,
+                w_n[0].x, w_n[0].y, w_n[0].z, w_n[0].w, w_sep[0].w, w_m[0].x,
+            );
+            let c = Cen(w_csum[0].xyz, w_m[0].y);
+            dst[i] = resolve(b, time, b.radius, f_i, total, c);
+            // Count the walks that took the fallback exactly as `gather` and
+            // `gather_centrality` do: the `2R_i` one always, the `R_i` one when
+            // its own box is wider than the live flock as well.
+            let lo = cell_of(p - vec3<f32>(b.radius));
+            let hi = cell_of(p + vec3<f32>(b.radius));
+            atomicAdd(&clock.wide, select(1u, 2u, grid_span(lo, hi) > f32(live)));
+        }
+        // The next straggler reuses the shared arrays.
+        workgroupBarrier();
+    }
 }
 
 @compute @workgroup_size(256)

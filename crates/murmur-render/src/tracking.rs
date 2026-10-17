@@ -208,6 +208,11 @@ impl FlockTracker {
         self.falcon_pos.map(|p| p + self.falcon_vel * dt)
     }
 
+    /// The falcon's velocity from the last telemetry sample, if one is hunting.
+    pub fn falcon_velocity(&self) -> Option<Vec3> {
+        self.falcon_pos.map(|_| self.falcon_vel)
+    }
+
     pub fn velocities(&self) -> &[Vec3] {
         &self.velocities
     }

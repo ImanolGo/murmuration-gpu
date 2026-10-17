@@ -57,7 +57,7 @@ macro_rules! check_struct {
 
 #[test]
 fn scene_matches_wgsl() {
-    assert_eq!(size_of::<Scene>(), 128);
+    assert_eq!(size_of::<Scene>(), 144);
     check_struct!(
         Scene,
         "Scene",
@@ -81,7 +81,9 @@ fn scene_matches_wgsl() {
             (falcon, 104),
             (reed, 108),
             (falcon_pos, 112),
-            (_pad6, 124),
+            (falcon_bank, 124),
+            (falcon_vel, 128),
+            (_pad7, 140),
         ]
     );
 }

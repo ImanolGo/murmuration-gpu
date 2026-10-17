@@ -82,7 +82,7 @@ pub struct Params {
     /// Number of hash buckets in the spatial grid (a power of two).
     pub buckets: u32,
 
-    /// `1 / grid::CELL`, the GPU grid's cell size the shader inverts. This is a
+    /// `1 / grid::cell_for(n)`, the GPU grid's cell size the shader inverts. This is a
     /// GPU-only acceleration parameter, not the oracle's `GRID_CELL`; the
     /// neighbour set is fixed by the exact distance check, so the two never
     /// disagree about which birds interact (see [`crate::grid::CELL`]).
@@ -178,7 +178,7 @@ impl Params {
             seed: seed as u32,
             buckets: crate::grid::buckets_for(n),
 
-            inv_cell: 1.0 / crate::grid::CELL,
+            inv_cell: 1.0 / crate::grid::cell_for(n),
             falcon_cruise: p::FALCON_CRUISE,
             falcon_climb: p::FALCON_CLIMB,
             falcon_stoop: p::FALCON_STOOP,

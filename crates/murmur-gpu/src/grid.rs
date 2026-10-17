@@ -57,7 +57,34 @@ const MAX_BUCKETS: u32 = 1 << 22;
 /// flock has only ~7 neighbours per bird, so it cannot show this; the cell
 /// matters on the model's own dense flocks. Phase 9 will size it against the
 /// benchmark; it is a performance knob, never a model change.
+///
+/// The 1 m cell only counted candidates, not the cell walk itself: every cell
+/// in the box costs a hash and two `offsets` reads even when empty, and at the
+/// densities the model settles to most 1 m cells *are* empty (≈0.5 birds/m³ at
+/// a few thousand birds). After a falcon strike the flash expansion thins the
+/// flock, every radius grows, and the `2R` box goes from ~300 to ~1,400 cells
+/// per bird; that, not the force maths, is what made the step cost jump. The
+/// cell is therefore sized from the radius the flock settles at, see
+/// [`cell_for`]; `CELL` is the floor, used for the largest flocks.
 pub const CELL: f32 = 1.0;
+
+/// Upper bound on the cell size \[m\].
+pub const CELL_MAX: f32 = 2.0;
+
+/// The GPU grid's cell size for a flock of `n` birds \[m\].
+///
+/// About 1.4× the adaptive radius the model settles to at that size
+/// (≈1.4 m at 2,000 birds, ≈0.9 m at 100,000, see above), so a `2R` query
+/// walks a few dozen cells holding a few birds each, instead of hundreds of
+/// mostly empty ones. Measured on the falcon strike at 4,000 birds (llvmpipe,
+/// `--bench --seconds 25 --falcon --no-arc`): `decide` 6.27 → 3.59 ms/step
+/// going from 1 m to 2 m cells, unchanged before the strike. Any size gives
+/// the same neighbours (exact distance test), so this is never a model change.
+pub fn cell_for(n: usize) -> f32 {
+    let n = n.max(1) as f32;
+    let settled_radius = 1.4 * (2000.0 / n).powf(0.11);
+    (1.4 * settled_radius).clamp(CELL, CELL_MAX)
+}
 
 /// Threads per workgroup and buckets per scan block, matching `grid.wgsl`.
 const WG: u32 = 256;

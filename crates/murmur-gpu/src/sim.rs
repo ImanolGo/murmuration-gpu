@@ -38,6 +38,9 @@ use crate::pass::{Timeline, dispatch};
 /// Threads per workgroup, matching `@workgroup_size` in `shaders/sim.wgsl`.
 const WORKGROUP: u32 = 256;
 
+/// Workgroups of `decide_wide_kernel`; `WIDE_GROUPS` in `shaders/sim.wgsl`.
+const WIDE_GROUPS: u32 = 64;
+
 /// The per-bird step, mirrored from `shaders/sim.wgsl`.
 const SIM_WGSL: &str = include_str!("../shaders/sim.wgsl");
 
@@ -97,6 +100,8 @@ pub struct Sim {
     readback: Buffer,
     bind_groups: [BindGroup; 2],
     decide: ComputePipeline,
+    /// Wide-radius stragglers, one workgroup each (`decide_wide_kernel`).
+    decide_wide: ComputePipeline,
     prepare_decisions: ComputePipeline,
     decide_bruteforce: ComputePipeline,
     integrate: ComputePipeline,
@@ -203,6 +208,7 @@ impl Sim {
             })
         };
         let decide = pipeline("decide_kernel");
+        let decide_wide = pipeline("decide_wide_kernel");
         let prepare_decisions = pipeline("prepare_decisions_kernel");
         let decide_bruteforce = pipeline("decide_bruteforce_kernel");
         let integrate = pipeline("integrate_kernel");
@@ -351,6 +357,7 @@ impl Sim {
             readback,
             bind_groups,
             decide,
+            decide_wide,
             prepare_decisions,
             decide_bruteforce,
             integrate,
@@ -639,7 +646,7 @@ impl Sim {
         // falcon): one invocation sets the roost height and spawns an arriving
         // group into the free slots, and one pass per bird retires the birds that
         // have landed. Untimed, like the falcon's, so the `--bench` timeline
-        // stays ten passes.
+        // stays the step's own passes.
         if self.arc_active {
             dispatch(encoder, &self.arc_update, &self.arc_bind[self.cur], 1, None);
             dispatch(
@@ -672,6 +679,15 @@ impl Sim {
             &self.decide
         };
         dispatch(encoder, decide, bind_group, workgroups, timeline.as_mut());
+        if !bruteforce {
+            dispatch(
+                encoder,
+                &self.decide_wide,
+                bind_group,
+                WIDE_GROUPS,
+                timeline.as_mut(),
+            );
+        }
         dispatch(
             encoder,
             &self.integrate,

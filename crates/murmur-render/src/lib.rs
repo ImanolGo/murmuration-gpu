@@ -11,6 +11,7 @@
 
 pub mod atmosphere;
 pub mod camera;
+pub mod falcon;
 pub mod mesh;
 pub mod png;
 pub mod renderer;

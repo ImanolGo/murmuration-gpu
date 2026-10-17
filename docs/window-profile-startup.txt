@@ -1,0 +1,30 @@
+# Real windowed playback, instrumented release build; not a headless FPS estimate.
+# Hardware: NVIDIA GeForce GTX 1650 with Max-Q Design
+# Driver: NVIDIA 615.78.08; Vulkan; Niri/Wayland; FIFO presentation
+# Birds: 8000 target; seed 1; default 15-minute evening; surface 1268x1380
+# CPU timings include waits; GPU simulation timings use timestamp queries.
+# GPU history is mapped only after playback completes.
+
+Before sparse-query / newborn-perception fixes:
+  command: prime-run target/release/murmuration-gpu --profile-window 12
+  frames 149; elapsed 12.006 s; average 12.41 fps; simulated 8.540 s
+  frame interval p50 18.270 ms; p95 341.763 ms; p99 367.298 ms; max 414.475 ms
+  CPU present wait p95 332.046 ms; max 407.057 ms
+  GPU simulation batch p95 329.591 ms; max 402.045 ms
+  GPU simulation per-step p95 8.240 ms; max 10.051 ms
+  Catch-up reached 40 steps/frame and could not keep simulation time in real time.
+
+After fixes, final photographic framing / cloud / reed / narrow-impostor build:
+  command: prime-run target/release/murmuration-gpu --profile-window 15
+  frames 887; elapsed 15.007 s; average 59.11 fps; simulated 14.995 s
+  frame interval p50 16.641 ms; p95 18.879 ms; p99 31.359 ms; max 41.593 ms
+  CPU present wait p95 10.515 ms; max 15.139 ms
+  GPU simulation batch p95 6.702 ms; max 11.327 ms
+  GPU simulation per-step p95 1.783 ms; max 2.889 ms
+  Fixed steps 2999; mean 3.38 per frame.
+  One compositor screenshot was taken during playback at about t=5 s.
+
+These runs validate startup for this seed/count/resolution, not a 60-fps guarantee
+at all counts, resolutions, seeds or throughout the complete 15-minute evening.
+The user-supplied videos remain the motion/appearance target; matching their
+folded-sheet morphology is not established by these performance measurements.

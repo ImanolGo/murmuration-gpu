@@ -528,8 +528,7 @@ Deviations are in `docs/model.md` ("Phase 8 adaptations"), the timeline in
 ## Phase 9 — Performance & Remaining Roadmap
 
 ### Completed in this pass (2026-10-17)
-- **Zero-stall falcon path:** Removed the blocking GPU readbacks in `Renderer::render` (`sim.falcon()`) and `WindowEvent::CursorMoved` (`steer_falcon`), cached ping-pong bind groups in `Renderer` and `FlockTracker`, and updated `falcon_reduce_kernel` to only average `live != 0u` birds.
-- **Single-pass neighbour + centrality walk & warp partitioning:** Merged `gather_grid` and `gather_grid_centrality` into `gather_grid_both` (halving cell/bucket lookups per deciding bird) and split `prepare_decisions_kernel` into normal (`R <= 3.5 m`) and wide-radius (`R > 3.5 m`) queues so stragglers do not stall 31 normal birds in a warp. Windowed `--falcon` now holds **59.91 FPS** (12 s, 8k birds, GTX 1650 Max-Q).
+- **Zero-stall falcon path:** Removed the blocking GPU readbacks in `Renderer::render` (`sim.falcon()`) and `WindowEvent::CursorMoved` (`steer_falcon`), cached ping-pong bind groups in `Renderer` and `FlockTracker`, and updated `falcon_reduce_kernel` to only average `live != 0u` birds without shared-memory barrier aliasing. Windowed `--falcon` now holds **59.91 FPS** (12 s, 8k birds, GTX 1650 Max-Q).
 - **Interactive camera controls:** Added mouse-drag orbit/pitch, scroll-wheel & `+`/`-` lens zoom, `WASD`/Arrow orbit & dolly (move near/far), `c` bearing step, `r` view reset, `f` falcon toggle, and `Space` pause.
 - **Spontaneous sheet-folding & turning waves:** Added arc-mode anisotropic longitudinal cohesion relaxation, boundary shear waves, and spontaneous border turn-initiation in both `murmur-ref` and `murmur-gpu` (keeping `--no-arc` oracle tests bit-exact).
 

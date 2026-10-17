@@ -63,6 +63,14 @@ fn grid_histogram(@builtin(global_invocation_id) gid: vec3<u32>) {
     if i >= P.n {
         return;
     }
+    // A bird the evening has not yet spawned, or one that has landed, is not in
+    // the flock: it must not enter the grid. It would otherwise sit at the
+    // origin with every other empty slot and make every query that walks that
+    // bucket or falls back to the brute-force walk scan the whole capacity.
+    if src[i].live == 0u {
+        bucket[i] = u32(P.buckets);
+        return;
+    }
     let b = bucket_of(cell_of(src[i].pos));
     bucket[i] = b;
     atomicAdd(&counts[b], 1u);
@@ -216,6 +224,10 @@ fn grid_scan_add(
 fn grid_scatter(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if i >= P.n {
+        return;
+    }
+    // `bucket[i] == P.buckets` marks an inactive bird (see `grid_histogram`).
+    if bucket[i] >= P.buckets {
         return;
     }
     let slot = atomicAdd(&counts[bucket[i]], 1u);

@@ -26,16 +26,6 @@
 // exactly like the reference reading `self` once), then `integrate`, which
 // advances `dst` in place.
 
-struct Clock {
-    time: f32,
-    step: u32,
-    // Neighbour queries that took the brute-force fallback on the last step
-    // (`gather` below). A bird that wide is a straggler whose adaptive radius
-    // has run away from the flock, and this is the run's main cost driver.
-    wide: atomic<u32>,
-    pad0: u32,
-}
-
 struct Zz {
     running: bool,
     roll: f32,
@@ -72,6 +62,7 @@ const TAU: f32 = 6.283185307179586;
 @group(0) @binding(1) var<storage, read> src: array<Bird>;
 @group(0) @binding(2) var<storage, read_write> dst: array<Bird>;
 @group(0) @binding(3) var<storage, read_write> clock: Clock;
+@group(0) @binding(11) var<storage, read_write> arc: ArcState;
 @group(0) @binding(4) var<storage, read_write> bucket: array<u32>;
 @group(0) @binding(6) var<storage, read_write> offsets: array<u32>;
 @group(0) @binding(7) var<storage, read_write> sorted: array<u32>;
@@ -257,6 +248,9 @@ fn gather_grid(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> 
                         continue;
                     }
                     let other = src[j];
+                    if other.live == 0u {
+                        continue;
+                    }
                     if any(cell_of(other.pos) != cell) {
                         continue;
                     }
@@ -290,6 +284,9 @@ fn gather_grid_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
                         continue;
                     }
                     let other = src[j];
+                    if other.live == 0u {
+                        continue;
+                    }
                     if any(cell_of(other.pos) != cell) {
                         continue;
                     }
@@ -315,6 +312,9 @@ fn gather_bruteforce(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f3
             continue;
         }
         let other = src[j];
+        if other.live == 0u {
+            continue;
+        }
         let d = other.pos - p;
         let d2 = dot(d, d);
         if d2 <= r2 {
@@ -330,6 +330,9 @@ fn gather_bruteforce_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
     let r2 = radius * radius;
     for (var j = 0u; j < n; j = j + 1u) {
         if j == i {
+            continue;
+        }
+        if src[j].live == 0u {
             continue;
         }
         let d = src[j].pos - p;
@@ -436,7 +439,7 @@ fn resolve(b_in: Bird, time: f32, r: f32, f_i: vec3<f32>, acc: Acc, cen: Cen) ->
     }
 
     // Vertical roost pull toward the preferred height (Eq. 12), capped.
-    force += vec3<f32>(0.0, 0.0, P.w_roost_v * clamp((P.z0 - p.z) / P.h_roost_v, -1.0, 1.0));
+    force += vec3<f32>(0.0, 0.0, P.w_roost_v * clamp((arc.z0 - p.z) / P.h_roost_v, -1.0, 1.0));
 
     // Speed control (Eq. 1, part of Eq. 14).
     let speed = length(b.vel);
@@ -562,6 +565,11 @@ fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let time = clock.time;
+    if src[i].live == 0u {
+        // The evening arc's slots not yet filled: no decision, nothing to do.
+        dst[i] = src[i];
+        return;
+    }
     var b = alarm(src[i], time);
     if time >= b.next_decision {
         b = decide(i, b, time);
@@ -576,6 +584,10 @@ fn decide_bruteforce_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let time = clock.time;
+    if src[i].live == 0u {
+        dst[i] = src[i];
+        return;
+    }
     var b = alarm(src[i], time);
     if time >= b.next_decision {
         b = decide_bruteforce(i, b, time);
@@ -593,6 +605,10 @@ fn integrate_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     let time = clock.time;
     var b = dst[i];
+    if b.live == 0u {
+        // Not in the flock: no flight, no wingbeat.
+        return;
+    }
 
     // End finished zigzags and start their cooldown.
     if b.zigzag_active != 0u && time - b.zigzag_start >= P.zigzag_duration {

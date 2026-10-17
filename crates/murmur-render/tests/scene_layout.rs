@@ -79,7 +79,7 @@ fn scene_matches_wgsl() {
             (_pad4, 92),
             (jitter, 96),
             (falcon, 104),
-            (_pad5, 108),
+            (reed, 108),
             (falcon_pos, 112),
             (_pad6, 124),
         ]

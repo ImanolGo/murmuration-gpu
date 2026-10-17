@@ -119,7 +119,8 @@ pub struct Scene {
     pub jitter: [f32; 2],
     /// Whether a falcon is hunting (1/0).
     pub falcon: f32,
-    pub _pad5: f32,
+    /// How visible the foreground reed bed is (0…1).
+    pub reed: f32,
     /// The falcon's position when `falcon` is 1 \[m\].
     pub falcon_pos: [f32; 3],
     pub _pad6: f32,
@@ -154,10 +155,16 @@ impl Scene {
             _pad4: 0.0,
             jitter: [0.0, 0.0],
             falcon: 0.0,
-            _pad5: 0.0,
+            reed: 0.0,
             falcon_pos: [0.0, 0.0, 0.0],
             _pad6: 0.0,
         }
+    }
+
+    /// Sets how visible the reed bed is (see [`crate::sky::reed_visibility`]).
+    pub fn with_reeds(mut self, visibility: f32) -> Self {
+        self.reed = visibility;
+        self
     }
 
     /// Sets the falcon the coverage pass draws, or clears it.
@@ -202,6 +209,8 @@ pub struct Renderer {
     coverage: RenderPipeline,
     /// The falcon's footprint, drawn from the scene alone (PLAN.md phase 7).
     falcon: RenderPipeline,
+    /// The foreground reed bed (PLAN.md phase 8).
+    reeds: RenderPipeline,
     tonemap: RenderPipeline,
     taa: RenderPipeline,
     exposure_pipeline: ComputePipeline,
@@ -523,6 +532,20 @@ impl Renderer {
             "fs_falcon",
             &[],
         );
+        let reeds_module = shader(
+            device,
+            "reeds",
+            &format!("{scene_wgsl}\n{}", include_str!("../shaders/reeds.wgsl")),
+        );
+        let reeds = bird_pipeline(
+            device,
+            "render: reeds",
+            &falcon_layout,
+            &reeds_module,
+            "vs_reeds",
+            "fs_reeds",
+            &[],
+        );
 
         let tonemap = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("render: tonemap"),
@@ -735,6 +758,7 @@ impl Renderer {
             impostor,
             coverage,
             falcon,
+            reeds,
             tonemap,
             taa,
             exposure_pipeline,
@@ -1136,9 +1160,10 @@ impl Renderer {
             }
         }
 
-        // The falcon, if one is hunting: drawn on top of the flock from the
-        // scene alone, into both targets so it counts toward the exposure.
-        if self.scene.falcon > 0.5 {
+        // The foreground: the reed bed (always in view when the camera looks
+        // low enough) and the falcon, drawn on top of the flock from the scene
+        // alone, into both targets so the falcon counts toward the exposure.
+        if self.scene.falcon > 0.5 || self.scene.reed > 0.002 {
             let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("render: falcon"),
                 color_attachments: &[
@@ -1166,9 +1191,16 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            pass.set_pipeline(&self.falcon);
-            pass.set_bind_group(0, &self.falcon_bind, &[]);
-            pass.draw(0..6, 0..1);
+            if self.scene.reed > 0.002 {
+                pass.set_pipeline(&self.reeds);
+                pass.set_bind_group(0, &self.falcon_bind, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            if self.scene.falcon > 0.5 {
+                pass.set_pipeline(&self.falcon);
+                pass.set_bind_group(0, &self.falcon_bind, &[]);
+                pass.draw(0..6, 0..1);
+            }
         }
         if let Some(set) = &self.timestamps {
             encoder.write_timestamp(set, 2);

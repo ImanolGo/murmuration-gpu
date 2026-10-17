@@ -13,6 +13,12 @@ evening sky, the way a real murmuration looks from the ground.
 The shapes come from individual birds following local rules. There is no
 prerecorded animation, no choreographed outline and no leader.
 
+![An evening at the roost](docs/evening.webp)
+
+*One evening, recorded from the app: the flock arrives from its approach
+corridor over a gold sky, displays, pours down into the reed bed as the light
+goes, and the stars come out. `scripts/evening.sh` reproduces the recording.*
+
 > **Status:** early development. See [PLAN.md](PLAN.md) for the roadmap and
 > [Limitations](#limitations) for what this is and is not.
 

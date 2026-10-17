@@ -484,6 +484,35 @@ and the GPU experiment (`murmur-gpu::agitation`), the falcon's footprint in
 **Accept:** a full evening runs unattended; the README's GIF is recorded
 from the real app.
 
+**Met (2026-10-17).** Phase 8 adds the evening arc on the GPU
+(`crates/murmur-gpu/src/arc.rs`, `shaders/arc.wgsl`), the `live` flag that lets a
+fixed-size flock grow and shrink, the foreground reed bed and the night stars
+(`crates/murmur-render/shaders/{reeds,sky_pass}.wgsl`), the terminal's
+`--no-arc` and `--arc-minutes`, and `--record` with `scripts/evening.sh`.
+Deviations are in `docs/model.md` ("Phase 8 adaptations"), the timeline in
+`docs/progress.md` (phase 8).
+
+- **A full evening runs unattended.** `--record DIR --birds 8000
+  --arc-minutes 3` runs the whole arc without intervention: the flock grows from
+  nothing through the arrival, holds for the display, pours down as the roost
+  level sinks to the reed tops, and is cleared at night, with the sky and the
+  stars following. Both engines are checked (`crates/{murmur-ref,murmur-gpu}`/
+  `tests/arc.rs`): live `0 → 2000`, held through the display, `z0 100 → 3`
+  through the roosting, `live 0` at night. One model property is recorded rather
+  than hidden: `remove_landed` retires a bird only below `REED_TOP = 3 m`, which
+  the descent reaches exactly at the roosting/night boundary, so the flock is
+  cleared at night rather than thinned during the roosting — the reference's own
+  behaviour at `Z0 = 100`, `REED_TOP = 3`.
+- **The README's animation is from the app.** `docs/evening.webp` (and the still
+  `docs/evening.png`) are the encode of `--record`'s frames; `scripts/evening.sh`
+  reproduces both from the binary. Nothing is authored separately.
+- **One structural change, recorded.** The reference's `World` adds and removes
+  birds; the GPU buffer is a fixed size, so the arc fills the next free slots and
+  clears a landed bird's `live` flag in place, and the grid, the neighbour walk,
+  the integration and the renderer all skip inactive birds. The flock's forces
+  read only the surviving birds, so the behaviour matches; the record order does
+  not.
+
 ## Phase 9 — Performance
 
 - Profile with timestamp queries and Nsight Graphics or RenderDoc.

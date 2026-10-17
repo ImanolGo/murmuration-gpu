@@ -7,6 +7,7 @@
 
 use std::mem::{offset_of, size_of};
 
+use murmur_gpu::arc::ArcState;
 use murmur_gpu::bird::Bird;
 use murmur_gpu::falcon::Falcon;
 use murmur_gpu::params::Params;
@@ -17,6 +18,8 @@ const SHADER: &str = concat!(
     include_str!("../shaders/common.wgsl"),
     "\n",
     include_str!("../shaders/bird.wgsl"),
+    "\n",
+    include_str!("../shaders/arc.wgsl"),
 );
 
 /// Extracts the field names of `struct <name> { ... }` from WGSL, handling
@@ -154,8 +157,31 @@ fn bird_matches_wgsl() {
             (zigzag_start, 92),
             (cooldown_until, 96),
             (flash_until, 100),
-            (pad0, 104),
+            (live, 104),
             (pad1, 108),
+        ]
+    );
+}
+
+#[test]
+fn arc_matches_wgsl() {
+    assert_eq!(size_of::<ArcState>(), 48);
+    check_struct!(
+        ArcState,
+        "ArcState",
+        [
+            (z0, 0),
+            (duration, 4),
+            (bearing, 8),
+            (radius, 12),
+            (spawn_timer, 16),
+            (next, 20),
+            (epoch, 24),
+            (rng, 28),
+            (present, 32),
+            (pad0, 36),
+            (pad1, 40),
+            (pad2, 44),
         ]
     );
 }

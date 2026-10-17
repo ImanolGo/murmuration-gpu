@@ -24,6 +24,7 @@
 
 pub mod agitation;
 pub mod analyze;
+pub mod arc;
 pub mod bench;
 pub mod bird;
 pub mod coherence;

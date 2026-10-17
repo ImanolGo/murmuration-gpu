@@ -1013,3 +1013,75 @@ run each, the GPU idle:
 - The camera and exposure readbacks still stall the pipeline each frame; the
   agitation measurement adds one readback per 5 ms step, which is fine for an
   experiment and not for a run (phase 9).
+
+## Phase 8 — the evening (2026-10-17)
+
+The flock arrives, displays, roosts and is cleared by night, and the recording is
+made from the running app.
+
+### What was built
+
+- **The GPU evening arc.** `crates/murmur-gpu/src/arc.rs` (the state record, its
+  spawn and its stream) and `shaders/arc.wgsl` (one invocation advances the
+  evening and spawns an arriving group; one pass per bird retires landed birds
+  and clears the flock at night). The arc runs after the clock and before the
+  falcon, as `world.rs::step` does, and only when `--no-arc` is absent. The
+  flock grows and shrinks by **activation**: an arriving group fills the next
+  free slots, a landed bird has its `live` flag cleared in place, and an inactive
+  bird is skipped by the neighbour walk, the flight integration, the falcon's
+  alarm and the LOD classifier. That is the one structural change the fixed-size
+  buffer forces (the reference removes records); it is recorded in
+  `docs/model.md`.
+- **The evening's light and clock.** `z0` moves with the phase (from the arc
+  state the shader reads), and the sky's `evening` value comes from the arc's own
+  ramp, so the gold arrival, the dusk display and the night all follow the model.
+- **Foreground and stars.** The reed bed is a procedural band of swaying stems
+  along the bottom of the frame, gated by the reference's own
+  `sky::reed_visibility`; stars appear in the upper half once the evening is past
+  0.75, from the reference's hash. Both are in
+  `crates/murmur-render/shaders/{reeds,sky_pass}.wgsl`.
+- **CLI and recording.** `--no-arc`, `--arc-minutes` (the terminal's flags) and
+  `--record DIR`, which renders one evening as a time-lapse. `scripts/evening.sh`
+  runs it and encodes `docs/evening.webp` and `docs/evening.png`, so the README's
+  animation is of the real app.
+
+### Acceptance — met
+
+**A full evening runs unattended.** `cargo run -p murmuration-gpu --release --
+--record DIR --birds 8000 --arc-minutes 3` runs the whole arc with no
+intervention: the flock grows from nothing through the arrival, holds for the
+display, pours down as `z0` sinks to the reed tops, and is cleared at night;
+the sky and the stars follow. The phase timeline is checked on both engines:
+
+- the CPU oracle (`crates/murmur-ref/tests/arc.rs`), 2,000 birds, a 3-minute
+  evening: `t=120s live 2000 spread 36 m z0 100` (display), `t=160s live 2000 z0
+  8.4` (roosting), `t=180s live 115 z0 100` (the next evening has begun);
+- the GPU (`crates/murmur-gpu/tests/arc.rs`), the same setup: live `0 → 2000`
+  through the arrival, held at 2000 through the display, `z0` `100 → 3` through
+  the roosting, and `live 0, z0 3` at night.
+
+Two model properties worth recording. The arrival spawns one group of 50–300
+birds every 0.5 s, so a *short* evening cannot fill a large flock: the 15 % the
+arrival gets of a 2-minute evening (18 s, ~36 groups) reaches about 6,000 birds,
+and `--birds 20000 --arc-minutes 2` therefore displays a partly-filled flock.
+That is the model's own rate, not a bug; the recording uses 8,000 birds over 3
+minutes, which the arrival fills. And the roosting phase's `remove_landed`
+retires a bird only below `REED_TOP = 3 m`, which the descent reaches exactly at
+the night boundary, so the flock is cleared at night rather than thinned during
+the roosting. That is the reference's own behaviour at `Z0 = 100`, `REED_TOP =
+3`; the tests assert the descent and the clear, and say so.
+
+**The README's animation is recorded from the app.** `docs/evening.webp` is the
+encode of `--record`'s frames (`scripts/evening.sh` reproduces it), and
+`docs/evening.png` is a still from the same run. Nothing in the recording is
+authored separately from the binary.
+
+### Open
+
+- The record mode reads the flock back every frame to drive the camera, and the
+  arc's spawns are per step; neither is a cost the window can carry at large bird
+  counts (the same readback issue as phase 9).
+- The reed bed is procedural rather than the terminal's braille; it is a
+  silhouette band, not a port of the terminal's `draw_reeds`.
+- GPU run-to-run bit-reproducibility remains out of scope (PLAN.md); a recorded
+  evening is reproducible on one engine.

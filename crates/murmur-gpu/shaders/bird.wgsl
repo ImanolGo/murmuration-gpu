@@ -15,7 +15,7 @@ struct Bird {
     next_decision: f32, centrality: f32, flap_phase: f32, flap_amp: f32,
     neighbour_count: u32, returning: u32, id: u32, rng: u32,
     alarmed: u32, zigzag_active: u32, zigzag_sign: f32, zigzag_start: f32,
-    cooldown_until: f32, flash_until: f32, pad0: u32, pad1: u32,
+    cooldown_until: f32, flash_until: f32, live: u32, pad1: u32,
 }
 
 // --- flight.rs: the body frame --------------------------------------------

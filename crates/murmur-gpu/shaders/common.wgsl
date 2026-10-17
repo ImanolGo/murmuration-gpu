@@ -25,6 +25,37 @@ struct Params {
     falcon_attack_height: f32, falcon_attack_min: f32, falcon_attack_max: f32, pad3: u32,
 }
 
+// The evening's own state (PLAN.md phase 8). Mirrored by
+// `crates/murmur-gpu/src/arc.rs` and checked by `tests/layout.rs`. Declared
+// here because `sim.wgsl` reads `z0` from it and `arc.wgsl` writes it; the
+// binding itself is declared in each module.
+struct ArcState {
+    z0: f32,
+    duration: f32,
+    bearing: f32,
+    radius: f32,
+    spawn_timer: f32,
+    next: u32,
+    epoch: u32,
+    rng: u32,
+    present: u32,
+    pad0: u32,
+    pad1: u32,
+    pad2: u32,
+}
+
+// The shared clock (declared here because `sim.wgsl` and `arc.wgsl` both read
+// it; the binding itself is declared in each module).
+struct Clock {
+    time: f32,
+    step: u32,
+    // Neighbour queries that took the brute-force fallback on the last step.
+    // A bird that wide is a straggler whose adaptive radius has run away from
+    // the flock, and this is the run's main cost driver.
+    wide: atomic<u32>,
+    pad0: u32,
+}
+
 @group(0) @binding(0) var<uniform> P: Params;
 
 // The falcon's agent state (PLAN.md phase 7). Mirrored by

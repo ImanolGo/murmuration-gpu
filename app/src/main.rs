@@ -55,7 +55,7 @@ use winit::{
 
 /// The command line. Hand-rolled for now; PLAN.md phase 8 moves the app to a
 /// `clap` CLI matching the terminal version.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Args {
     /// Run the headless CPU/GPU parity check instead of the window.
     parity: bool,
@@ -74,6 +74,8 @@ struct Args {
     /// Capture a frame sequence into this directory (the phase-6 fly-past
     /// recording and the shimmer statistic).
     capture: Option<String>,
+    /// Record one evening as a time-lapse into this directory (PLAN.md phase 8).
+    record: Option<String>,
     /// Sweep one bird across every LOD threshold and print the transition
     /// measurement instead of opening the window.
     lod_sweep: bool,
@@ -81,6 +83,10 @@ struct Args {
     agitation: bool,
     /// A falcon hunts from the start.
     falcon: bool,
+    /// Hold the display phase: no evening arc.
+    no_arc: bool,
+    /// Length of one evening in minutes.
+    arc_minutes: f32,
     /// Copying threshold k for the zigzag wave (1–7).
     zigzag_k: u32,
     /// Frames in a `--capture` sequence.
@@ -113,9 +119,12 @@ impl Default for Args {
             coherence: None,
             still: None,
             capture: None,
+            record: None,
             lod_sweep: false,
             agitation: false,
             falcon: false,
+            no_arc: false,
+            arc_minutes: 15.0,
             zigzag_k: murmur_ref::params::ZIGZAG_K,
             frames: 120,
             zoom: CAPTURE_ZOOM,
@@ -146,9 +155,14 @@ fn parse_args() -> Result<Args, String> {
             }
             "--still" => args.still = Some(value(&mut it, "--still")?),
             "--capture" => args.capture = Some(value(&mut it, "--capture")?),
+            "--record" => args.record = Some(value(&mut it, "--record")?),
             "--lod-sweep" => args.lod_sweep = true,
             "--agitation" => args.agitation = true,
             "--falcon" => args.falcon = true,
+            "--no-arc" => args.no_arc = true,
+            "--arc-minutes" => {
+                args.arc_minutes = value(&mut it, "--arc-minutes")?.parse().map_err(err)?;
+            }
             "--zigzag-k" => {
                 args.zigzag_k = value(&mut it, "--zigzag-k")?.parse().map_err(err)?;
                 if !(1..=7).contains(&args.zigzag_k) {
@@ -177,7 +191,7 @@ fn parse_args() -> Result<Args, String> {
                 println!(
                     "murmuration-gpu [--parity | --bench | --analyze SECONDS | \
                      --coherence SECONDS | --still PATH | --capture DIR | \
-                     --lod-sweep | --agitation] [--birds N] [--seed S] [--seconds T] \
+                     --record DIR | --lod-sweep | --agitation] [--birds N] [--seed S] [--seconds T] \
                      [--seeds K] [--steps N] [--frames N] [--zoom F] [--falcon] \
                      [--zigzag-k K] [--extended] [--turning base|inertial]"
                 );
@@ -438,19 +452,22 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
 
     let mut world = World::new_density_scaled(args.birds, args.seed);
     world.turning = args.turning;
-    let evening = world.evening();
     let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+    if !args.no_arc {
+        sim.enable_arc(&gpu, args.arc_minutes, args.seed);
+    }
     if args.falcon {
         sim.spawn_falcon(&gpu, args.seed, world.z0);
     }
     sim.advance_seconds(&gpu, seconds)?;
 
-    let flock = World::restore(&sim.snapshot(&gpu));
+    let birds = sim.read_birds(&gpu)?;
+    let (positions, velocities) = flock_view(&birds);
     let mut camera = Camera::new();
     camera.update(
         &FlockView {
-            positions: &flock.position,
-            velocities: &flock.velocity,
+            positions: &positions,
+            velocities: &velocities,
             time: sim.time(),
         },
         DT,
@@ -470,6 +487,7 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
     } else {
         None
     };
+    let evening = evening_of(args, sim.time());
 
     let mut scene = Scene::from_camera(
         &camera,
@@ -480,7 +498,8 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
         FLAP_AMPLITUDE,
         sim.time(),
     )
-    .with_falcon(falcon);
+    .with_falcon(falcon)
+    .with_reeds(murmur_render::sky::reed_visibility(&camera));
     // The first frame fixes the exposure from the flock's 80th-percentile
     // optical depth; the rest let it settle, and let the temporal accumulation
     // average the jittered samples of the frozen scene.
@@ -806,19 +825,22 @@ fn capture_pass(
 
     let mut world = World::new_density_scaled(args.birds, args.seed);
     world.turning = args.turning;
-    let evening = world.evening();
     let mut sim = Sim::from_snapshot(gpu, &world.snapshot());
+    if !args.no_arc {
+        sim.enable_arc(gpu, args.arc_minutes, args.seed);
+    }
     if args.falcon {
         sim.spawn_falcon(gpu, args.seed, world.z0);
     }
     sim.advance_seconds(gpu, seconds)?;
 
-    let flock = World::restore(&sim.snapshot(gpu));
+    let birds = sim.read_birds(gpu)?;
+    let (positions, velocities) = flock_view(&birds);
     let mut camera = Camera::new();
     camera.update(
         &FlockView {
-            positions: &flock.position,
-            velocities: &flock.velocity,
+            positions: &positions,
+            velocities: &velocities,
             time: sim.time(),
         },
         DT,
@@ -832,7 +854,7 @@ fn capture_pass(
         &camera,
         WIDTH,
         HEIGHT,
-        evening,
+        evening_of(args, sim.time()),
         renderer.exposure(),
         FLAP_AMPLITUDE,
         sim.time(),
@@ -873,11 +895,12 @@ fn capture_pass(
             scene = frozen_scene;
         } else {
             sim.advance(gpu, STEPS);
-            let flock = World::restore(&sim.snapshot(gpu));
+            let birds = sim.read_birds(gpu)?;
+            let (positions, velocities) = flock_view(&birds);
             camera.update(
                 &FlockView {
-                    positions: &flock.position,
-                    velocities: &flock.velocity,
+                    positions: &positions,
+                    velocities: &velocities,
                     time: sim.time(),
                 },
                 DT,
@@ -887,7 +910,7 @@ fn capture_pass(
                 &camera,
                 WIDTH,
                 HEIGHT,
-                evening,
+                evening_of(args, sim.time()),
                 renderer.exposure(),
                 FLAP_AMPLITUDE,
                 sim.time(),
@@ -896,7 +919,8 @@ fn capture_pass(
                 Some(sim.falcon(gpu)?.position())
             } else {
                 None
-            });
+            })
+            .with_reeds(murmur_render::sky::reed_visibility(&camera));
             let t = if frames > 1 {
                 frame as f32 / (frames - 1) as f32
             } else {
@@ -1202,6 +1226,100 @@ fn worst_step(rows: &[SweepRow], lo: f32, hi: f32) -> Step {
     worst
 }
 
+/// Records one evening as a time-lapse (PLAN.md phase 8): `--frames` frames
+/// spread evenly over `--arc-minutes`, each rendered and written as a PNG in
+/// `dir`. The GIF or WebP is then made with ffmpeg, as `scripts/evening.sh`
+/// does, so the recording is of the real app and not of a separate renderer.
+fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
+    const WIDTH: u32 = 960;
+    const HEIGHT: u32 = 540;
+    const DT: f32 = 1.0 / 30.0;
+    if args.no_arc {
+        return Err("--record needs the evening arc; drop --no-arc".into());
+    }
+    let frames = args.frames.max(2);
+    let duration = (args.arc_minutes * 60.0).max(1.0);
+    let per_frame = duration / frames as f32;
+
+    let gpu = open_timed()?;
+    let info = gpu.info();
+    println!(
+        "# murmuration-gpu --record {dir} birds={} seed={} minutes={} frames={frames} {WIDTH}x{HEIGHT}",
+        args.birds, args.seed, args.arc_minutes
+    );
+    println!(
+        "# adapter \"{}\" on {:?} ({:?}), driver \"{}\" {}",
+        info.name, info.backend, info.device_type, info.driver, info.driver_info
+    );
+    std::fs::create_dir_all(dir)?;
+
+    let mut world = World::new_density_scaled(args.birds, args.seed);
+    world.turning = args.turning;
+    let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+    sim.enable_arc(&gpu, args.arc_minutes, args.seed);
+    if args.falcon {
+        sim.spawn_falcon(&gpu, args.seed, world.z0);
+    }
+
+    let mut renderer =
+        FrameRenderer::new(&gpu, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8UnormSrgb)?;
+    renderer.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
+    let target = renderer.create_target(&gpu, WIDTH, HEIGHT);
+    let mut camera = Camera::new();
+    let mut scene;
+
+    for frame in 0..frames {
+        sim.advance_seconds(&gpu, per_frame)?;
+        let birds = sim.read_birds(&gpu)?;
+        let (positions, velocities) = flock_view(&birds);
+        camera.update(
+            &FlockView {
+                positions: &positions,
+                velocities: &velocities,
+                time: sim.time(),
+            },
+            DT,
+            WIDTH as f32 / HEIGHT as f32,
+        );
+        let falcon = if sim.falcon_active() {
+            Some(sim.falcon(&gpu)?.position())
+        } else {
+            None
+        };
+        scene = Scene::from_camera(
+            &camera,
+            WIDTH,
+            HEIGHT,
+            evening_of(args, sim.time()),
+            renderer.exposure(),
+            FLAP_AMPLITUDE,
+            sim.time(),
+        )
+        .with_falcon(falcon)
+        .with_reeds(murmur_render::sky::reed_visibility(&camera));
+        let evening = scene.evening;
+        renderer.set_scene(&gpu, scene);
+        renderer.render(&gpu, &target.view, sim.len() as u32, DT);
+        let rgba = renderer.read_target(&gpu, &target, WIDTH, HEIGHT);
+        let rgb: Vec<u8> = rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .flat_map(|p| [p[0], p[1], p[2]])
+            .collect();
+        png::write_rgb(format!("{dir}/frame-{frame:04}.png"), WIDTH, HEIGHT, &rgb)?;
+        if frame % 20 == 0 {
+            println!(
+                "# frame {frame:4} t={:6.1}s live {} evening {evening:.2}",
+                sim.time(),
+                birds.iter().filter(|b| b.live != 0).count(),
+            );
+        }
+    }
+    println!("# {} frames written to {dir}", frames);
+    Ok(())
+}
+
 /// The agitation-wave experiment (PLAN.md phase 7): how fast a zigzag copies
 /// through the flock.
 ///
@@ -1259,6 +1377,31 @@ fn agitation_line(wave: &murmur_ref::escape::AgitationWave) -> String {
         wave.peak_alarmed * 100.0,
         wave.peak_expansion * 100.0,
     )
+}
+
+/// The camera's view of the flock: the live birds only. The evening arc parks
+/// the slots it has not filled (and the birds that have landed) at the origin,
+/// and the camera must not frame them.
+fn flock_view(birds: &[Bird]) -> (Vec<Vec3>, Vec<Vec3>) {
+    let mut positions = Vec::with_capacity(birds.len());
+    let mut velocities = Vec::with_capacity(birds.len());
+    for b in birds.iter().filter(|b| b.live != 0) {
+        positions.push(Vec3::from_array(b.pos));
+        velocities.push(Vec3::from_array(b.vel));
+    }
+    (positions, velocities)
+}
+
+/// How far into the evening the sky is, from the arc's own clock: `0` at the
+/// gold of the arrival, `1` at night. Without an arc the sky holds the model's
+/// mid-evening value.
+fn evening_of(args: &Args, time: f32) -> f32 {
+    if args.no_arc {
+        return 0.5;
+    }
+    let mut arc = murmur_ref::arc::Arc::new(args.arc_minutes, args.seed);
+    arc.time = time % arc.duration;
+    arc.evening()
 }
 
 fn main() {
@@ -1320,6 +1463,13 @@ fn main() {
         }
         return;
     }
+    if let Some(dir) = &args.record {
+        if let Err(error) = run_record(&args, dir) {
+            eprintln!("murmuration-gpu: --record failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
     if args.agitation {
         if let Err(error) = run_agitation(&args) {
             eprintln!("murmuration-gpu: --agitation failed: {error}");
@@ -1353,13 +1503,12 @@ struct Renderer {
     sim: Sim,
     frame: FrameRenderer,
     camera: Camera,
-    /// Evening brightness for the sky, fixed for the run (the simulation's
-    /// initial value; the evening arc arrives in a later phase).
-    evening: f32,
     birds: usize,
     /// The run's seed and preferred height, for a window-spawned falcon.
     seed: u64,
     z0: f32,
+    /// The parsed arguments, for the evening's clock.
+    args: Args,
     /// Wall clock of the previous frame, so the flock steps in real time.
     last: Instant,
 }
@@ -1410,8 +1559,10 @@ impl Renderer {
 
         let mut world = World::new_density_scaled(args.birds, args.seed);
         world.turning = args.turning;
-        let evening = world.evening();
         let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+        if !args.no_arc {
+            sim.enable_arc(&gpu, args.arc_minutes, args.seed);
+        }
         if args.falcon {
             sim.spawn_falcon(&gpu, args.seed, world.z0);
         }
@@ -1427,11 +1578,11 @@ impl Renderer {
             sim,
             frame,
             camera: Camera::new(),
-            evening,
             birds: args.birds,
             last: Instant::now(),
             seed: args.seed,
             z0: world.z0,
+            args: args.clone(),
         })
     }
 
@@ -1496,12 +1647,13 @@ impl Renderer {
         let steps = ((dt / self.sim.params.dt) as u32).clamp(1, MAX_FRAME_STEPS);
         self.sim.advance(&self.gpu, steps);
 
-        let flock = World::restore(&self.sim.snapshot(&self.gpu));
+        let birds = self.sim.read_birds(&self.gpu)?;
+        let (positions, velocities) = flock_view(&birds);
         let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
         self.camera.update(
             &FlockView {
-                positions: &flock.position,
-                velocities: &flock.velocity,
+                positions: &positions,
+                velocities: &velocities,
                 time: self.sim.time(),
             },
             dt,
@@ -1522,12 +1674,13 @@ impl Renderer {
                 &self.camera,
                 self.config.width,
                 self.config.height,
-                self.evening,
+                evening_of(&self.args, self.sim.time()),
                 self.frame.exposure(),
                 FLAP_AMPLITUDE,
                 self.sim.time(),
             )
-            .with_falcon(falcon),
+            .with_falcon(falcon)
+            .with_reeds(murmur_render::sky::reed_visibility(&self.camera)),
         );
         self.frame.render(&self.gpu, &view, self.birds as u32, dt);
 

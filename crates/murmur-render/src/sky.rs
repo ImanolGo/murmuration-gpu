@@ -114,6 +114,15 @@ pub fn ramp_of(ray: glam::Vec3) -> f32 {
     1.0 - elevation_of(ray) / std::f32::consts::FRAC_PI_2
 }
 
+/// How much of the foreground reed bed belongs in this view. Mirrors the
+/// terminal reference's `sky::reed_visibility`: a soft angular band, so the
+/// stems do not switch on and off when camera tracking crosses a threshold.
+pub fn reed_visibility(camera: &crate::camera::Camera) -> f32 {
+    let bottom = (camera.forward - camera.up * (camera.fov * 0.5).tan()).normalize();
+    let t = ((0.25 - bottom.z) / 0.20).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
 /// The clear colour for a surface of `format`: the dusk colour in the
 /// encoding wgpu expects.
 ///

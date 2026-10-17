@@ -16,7 +16,9 @@ struct Scene {
     // points inside a pixel; see `shaders/taa.wgsl`.
     jitter: vec2<f32>,
     // Whether a falcon is hunting, and where (`shaders/falcon.wgsl`).
-    falcon: f32, _pad5: f32,
+    falcon: f32,
+    // How visible the foreground reed bed is (0…1).
+    reed: f32,
     falcon_pos: vec3<f32>,
     // Uniform layout rounds a struct up to 16 bytes; this keeps the block the
     // same size in Rust and WGSL.

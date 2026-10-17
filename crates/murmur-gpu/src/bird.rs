@@ -65,8 +65,12 @@ pub struct Bird {
     pub cooldown_until: f32,
     /// Time until which the flash expansion applies \[s\].
     pub flash_until: f32,
-    /// Padding to a 16-byte multiple.
-    pub pad0: u32,
+    /// Whether the bird is in the flock (1/0) (`live` in WGSL: `active` is a
+    /// reserved word there). The evening arc (PLAN.md phase 8)
+    /// spawns arriving groups into spare slots and retires landed birds in
+    /// place, so the buffer keeps its size; an inactive bird is skipped by the
+    /// neighbour walk, the flight integration and the LOD classifier.
+    pub live: u32,
     /// Padding to a 16-byte multiple.
     pub pad1: u32,
 }
@@ -98,7 +102,7 @@ impl Bird {
             zigzag_start: e.zigzag_start,
             cooldown_until: e.cooldown_until,
             flash_until: e.flash_until,
-            pad0: 0,
+            live: 1,
             pad1: 0,
         }
     }

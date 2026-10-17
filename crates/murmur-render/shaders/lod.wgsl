@@ -49,6 +49,10 @@ fn classify(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let b = birds[i];
+    if (b.live == 0u) {
+        // A slot the evening arc has not filled, or a bird that has landed.
+        return;
+    }
     let depth = dot(b.pos - scene.eye, scene.forward);
     if (depth <= 1.0) {
         // Behind (or on top of) the observer: no level draws it.

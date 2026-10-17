@@ -448,6 +448,55 @@ narrower band let the fade's per-step change reach `2.3×` the growth control.
 At `2 px` it is `1.52×` (`docs/lod-sweep.txt`), back under the stated jump
 threshold.
 
+### Phase 8 adaptations
+
+Phase 8 adds the evening (PLAN.md "Phase 8"): the arrival, display, roosting and
+night phases, a foreground reed bed and stars, and a recording script. The arc
+is the model's — `murmur-ref/src/arc.rs` mirrors `murmuration::sim::arc`, and the
+phases, the evening brightness ramp, the approach corridor and the landing rule
+are the reference's own.
+
+- **The flock grows and shrinks by activation.** The reference's `World` adds
+  and removes birds; the GPU's storage buffer is a fixed size. The arc therefore
+  spawns an arriving group into the *next free slots* and retires a landed bird
+  by clearing its `live` flag in place. An inactive bird is skipped by the
+  neighbour walk, the flight integration, the falcon's alarm and the LOD
+  classifier, so it is absent from the flock exactly as a removed record would
+  be. Two consequences are recorded rather than hidden: the reference's removal
+  *compacts* the array (so a removed bird's swap can reorder the flock), and its
+  `len()` shrinks; here the slot count never changes and the arc's own `next`
+  stands in for the live count. Neither difference is observable in the model's
+  behaviour — the flock's forces only ever read the surviving birds — but the
+  order of the records is not the reference's.
+- **The arc runs on the GPU, one step at a time.** `shaders/arc.wgsl` advances
+  the evening clock, sets the roost level for the phase and spawns groups; a
+  second pass retires landed birds and clears the flock at night. The evening's
+  time is `clock.time % duration`, so the arc needs no clock of its own. The
+  shader's `resolve` reads the roost level from the arc state instead of the
+  params, which is how `world.rs` lets `arc.update` move `z0` under the model.
+- **One adaptation: the random stream.** The oracle draws its arrival bearings,
+  corridor radii, group sizes and group shapes from ChaCha8, which cannot run in
+  WGSL; the GPU draws from the same counter-based PCG as the birds, and both
+  sides advance it with the same step, so a run is reproducible on one engine.
+  The groups are from the same distributions, not from the same draws.
+- **The landing and the night clear coincide.** `remove_landed` retires a bird
+  only once it is below the reed tops (`z < REED_TOP = 3 m`), and the roosting
+  phase's descent reaches `REED_TOP` exactly at the roosting/night boundary, so
+  in practice the flock is cleared at night rather than thinned during the
+  roosting. That is the reference's own behaviour at these constants (Z0 = 100 m,
+  REED_TOP = 3 m); the port keeps it and `crates/murmur-gpu/tests/arc.rs` records
+  it.
+- **The reed bed is procedural, not braille.** The terminal draws its reeds as
+  braille dots; here `shaders/reeds.wgsl` draws a sparse band of swaying stems in
+  the bottom of the frame, gated by `sky::reed_visibility` (the reference's
+  angular band, ported) so the stems appear when the camera looks low enough.
+  Like the reference, they are drawn last, over the birds. They are a
+  *foreground* silhouette and are not part of the flock's optical depth, so they
+  do not enter the exposure histogram.
+- **Stars are drawn when the evening is past 0.75.** `sky_pass.wgsl` adds a
+  sparse field in the upper half of the frame, from the reference's own hash
+  (about 6 in 4096 pixels), lit as the sky darkens.
+
 ## Known gaps (reported, not hidden)
 
 Carried over from the reference and not fixed here (fixing them would change the

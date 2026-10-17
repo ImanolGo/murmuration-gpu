@@ -24,6 +24,7 @@ use wgpu::{
 };
 
 use crate::BIRD_WGSL;
+use crate::arc::ArcState;
 use crate::bird::Bird;
 use crate::device::{Gpu, Stalled, WAIT_BUDGET};
 use crate::falcon::{Falcon, Mode};
@@ -44,6 +45,11 @@ const SIM_WGSL: &str = include_str!("../shaders/sim.wgsl");
 /// simulation module so they share `Params`, `Bird`, `Clock` and the falcon
 /// binding.
 const FALCON_WGSL: &str = include_str!("../shaders/falcon.wgsl");
+
+/// The evening arc's kernels (PLAN.md phase 8), in the same module for the same
+/// reason. They read the flock through their own read-write binding instead of
+/// the sim's read-only one, because the arc adds and retires birds in place.
+const ARC_WGSL: &str = include_str!("../shaders/arc.wgsl");
 
 /// The shared clock buffer, matching `struct Clock` in the shader.
 #[repr(C)]
@@ -86,6 +92,8 @@ pub struct Sim {
     birds: [Buffer; 2],
     clock: Buffer,
     falcon: Buffer,
+    arc: Buffer,
+    arc_bind: [BindGroup; 2],
     readback: Buffer,
     bind_groups: [BindGroup; 2],
     decide: ComputePipeline,
@@ -94,6 +102,8 @@ pub struct Sim {
     tick: ComputePipeline,
     falcon_reduce: ComputePipeline,
     falcon_update: ComputePipeline,
+    arc_update: ComputePipeline,
+    arc_landed: ComputePipeline,
     n: usize,
     /// Index into `birds` holding the current state (the next `src`).
     cur: usize,
@@ -103,13 +113,15 @@ pub struct Sim {
     /// Whether a falcon is hunting, so the step knows to run its passes without
     /// a readback.
     falcon_active: bool,
+    /// Whether an evening arc is running.
+    arc_active: bool,
 }
 
 impl Sim {
     /// Builds a GPU flock for `params`, with an empty (zeroed) bird buffer.
     pub fn new(gpu: &Gpu, params: Params) -> Self {
         let device = &gpu.device;
-        let source = format!("{COMMON_WGSL}\n{BIRD_WGSL}\n{SIM_WGSL}\n{FALCON_WGSL}");
+        let source = format!("{COMMON_WGSL}\n{BIRD_WGSL}\n{SIM_WGSL}\n{FALCON_WGSL}\n{ARC_WGSL}");
         let module = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("sim"),
             source: ShaderSource::Wgsl(source.into()),
@@ -143,8 +155,37 @@ impl Sim {
                     BufferBindingType::Storage { read_only: false },
                 ),
                 entry(9, BufferBindingType::Storage { read_only: false }),
+                entry(11, BufferBindingType::Storage { read_only: false }),
             ],
         });
+        // The arc adds and retires birds, so it binds the flock read-write
+        // (binding 10) plus the clock and its own state.
+        let arc_bgl = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("sim: arc bind group layout"),
+            entries: &[
+                entry(0, BufferBindingType::Uniform),
+                entry(3, BufferBindingType::Storage { read_only: false }),
+                entry(10, BufferBindingType::Storage { read_only: false }),
+                entry(11, BufferBindingType::Storage { read_only: false }),
+            ],
+        });
+        let arc_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("sim: arc pipeline layout"),
+            bind_group_layouts: &[Some(&arc_bgl)],
+            immediate_size: 0,
+        });
+        let arc_pipeline = |entry_point: &str| {
+            device.create_compute_pipeline(&ComputePipelineDescriptor {
+                label: Some(entry_point),
+                layout: Some(&arc_layout),
+                module: &module,
+                entry_point: Some(entry_point),
+                compilation_options: Default::default(),
+                cache: None,
+            })
+        };
+        let arc_update = arc_pipeline("arc_kernel");
+        let arc_landed = arc_pipeline("landed_kernel");
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: Some("sim: pipeline layout"),
             bind_group_layouts: &[Some(&bgl)],
@@ -204,6 +245,14 @@ impl Sim {
         });
         gpu.queue
             .write_buffer(&falcon, 0, bytemuck::bytes_of(&Falcon::absent()));
+        let arc = device.create_buffer(&BufferDescriptor {
+            label: Some("sim: arc"),
+            size: size_of::<ArcState>() as u64,
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+            mapped_at_creation: false,
+        });
+        gpu.queue
+            .write_buffer(&arc, 0, bytemuck::bytes_of(&ArcState::absent(params.z0)));
 
         let grid = Grid::new(gpu, &layout, n);
 
@@ -252,9 +301,40 @@ impl Sim {
                         binding: 9,
                         resource: falcon.as_entire_binding(),
                     },
+                    wgpu::BindGroupEntry {
+                        binding: 11,
+                        resource: arc.as_entire_binding(),
+                    },
                 ],
             })
         };
+        // The arc's bind groups name the flock buffer it writes, one per
+        // ping-pong direction.
+        let bind_arc = |cur: usize| {
+            device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("sim: arc bind group"),
+                layout: &arc_bgl,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: params_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: clock.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 10,
+                        resource: birds[cur].as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 11,
+                        resource: arc.as_entire_binding(),
+                    },
+                ],
+            })
+        };
+        let arc_bind = [bind_arc(0), bind_arc(1)];
         let bind_groups = [bind(0, 1), bind(1, 0)];
 
         let sim = Self {
@@ -264,6 +344,8 @@ impl Sim {
             birds,
             clock,
             falcon,
+            arc,
+            arc_bind,
             readback,
             bind_groups,
             decide,
@@ -272,12 +354,15 @@ impl Sim {
             tick,
             falcon_reduce,
             falcon_update,
+            arc_update,
+            arc_landed,
             n,
             cur: 0,
             time: params.time,
             step: 0,
             seed: 0,
             falcon_active: false,
+            arc_active: false,
         };
         sim.write_params(gpu);
         sim.write_clock(gpu, params.time, 0);
@@ -352,6 +437,30 @@ impl Sim {
         self.write_falcon(gpu, &Falcon::spawn(seed, z0));
     }
 
+    /// Starts an evening of `minutes` minutes (`world.rs::enable_arc`): the
+    /// flock is cleared and the arc spawns arriving groups into the free slots.
+    pub fn enable_arc(&mut self, gpu: &Gpu, minutes: f32, seed: u64) {
+        let z0 = self.params.z0;
+        // The reference clears the flock, so every slot starts empty.
+        let empty = vec![Bird::zeroed(); self.n];
+        gpu.queue
+            .write_buffer(&self.birds[self.cur], 0, bytemuck::cast_slice(&empty));
+        let arc = ArcState::new(minutes, seed, z0);
+        self.arc_active = arc.is_present();
+        gpu.queue
+            .write_buffer(&self.arc, 0, bytemuck::bytes_of(&arc));
+    }
+
+    /// Whether an evening arc is running.
+    pub fn arc_active(&self) -> bool {
+        self.arc_active
+    }
+
+    /// The evening's current state (a small blocking readback).
+    pub fn arc_state(&self, gpu: &Gpu) -> Result<ArcState, Stalled> {
+        read_small::<ArcState>(gpu, &self.arc, "arc")
+    }
+
     /// Writes a falcon record over the current one (window steering, tests). Its
     /// `present` field decides whether the falcon passes run.
     pub fn write_falcon(&mut self, gpu: &Gpu, falcon: &Falcon) {
@@ -367,35 +476,7 @@ impl Sim {
 
     /// Reads the falcon's current state (a small blocking readback).
     pub fn falcon(&self, gpu: &Gpu) -> Result<Falcon, Stalled> {
-        let staging = gpu.device.create_buffer(&BufferDescriptor {
-            label: Some("sim: falcon readback"),
-            size: size_of::<Falcon>() as u64,
-            usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let mut encoder = gpu
-            .device
-            .create_command_encoder(&CommandEncoderDescriptor {
-                label: Some("sim: falcon readback"),
-            });
-        encoder.copy_buffer_to_buffer(&self.falcon, 0, &staging, 0, size_of::<Falcon>() as u64);
-        gpu.queue.submit(Some(encoder.finish()));
-
-        let (tx, rx) = std::sync::mpsc::channel();
-        staging.map_async(wgpu::MapMode::Read, .., move |result| {
-            let _ = tx.send(result);
-        });
-        gpu.wait_bounded(WAIT_BUDGET)?;
-        rx.recv_timeout(WAIT_BUDGET)
-            .map_err(|_| Stalled {
-                waited: WAIT_BUDGET,
-            })?
-            .expect("mapping the falcon buffer for reading");
-        let range = staging.get_mapped_range(..).expect("reading the falcon");
-        let falcon = *bytemuck::from_bytes::<Falcon>(&range[..size_of::<Falcon>()]);
-        drop(range);
-        staging.unmap();
-        Ok(falcon)
+        read_small::<Falcon>(gpu, &self.falcon, "falcon")
     }
 
     /// Points a mouse-steered falcon at `target` (`world.rs`'s window handler).
@@ -499,9 +580,22 @@ impl Sim {
         let bind_group = &self.bind_groups[self.cur];
         let workgroups = self.n.div_ceil(WORKGROUP as usize) as u32;
         dispatch(encoder, &self.tick, bind_group, 1, timeline.as_mut());
-        // The falcon hunts first (`world.rs::step` updates it after the clock and
-        // before the alarm). Two passes, one workgroup each, with no timestamps:
-        // `--bench` never spawns a falcon, so the step timeline stays ten passes.
+        // The evening advances first (`world.rs::step` runs the arc before the
+        // falcon): one invocation sets the roost height and spawns an arriving
+        // group into the free slots, and one pass per bird retires the birds that
+        // have landed. Untimed, like the falcon's, so the `--bench` timeline
+        // stays ten passes.
+        if self.arc_active {
+            dispatch(encoder, &self.arc_update, &self.arc_bind[self.cur], 1, None);
+            dispatch(
+                encoder,
+                &self.arc_landed,
+                &self.arc_bind[self.cur],
+                workgroups,
+                None,
+            );
+        }
+        // The falcon hunts after the arc and before the alarm.
         if self.falcon_active {
             dispatch(encoder, &self.falcon_reduce, bind_group, 1, None);
             dispatch(encoder, &self.falcon_update, bind_group, 1, None);
@@ -680,6 +774,41 @@ impl Sim {
         gpu.queue
             .write_buffer(&self.clock, 0, bytemuck::bytes_of(&clock));
     }
+}
+
+/// Reads a small buffer back to the host: the falcon and the evening arc. The
+/// wait is bounded like every other readback ([`WAIT_BUDGET`]).
+fn read_small<T: bytemuck::Pod>(gpu: &Gpu, buffer: &Buffer, label: &str) -> Result<T, Stalled> {
+    let size = size_of::<T>() as u64;
+    let staging = gpu.device.create_buffer(&BufferDescriptor {
+        label: Some(label),
+        size,
+        usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = gpu
+        .device
+        .create_command_encoder(&CommandEncoderDescriptor { label: Some(label) });
+    encoder.copy_buffer_to_buffer(buffer, 0, &staging, 0, size);
+    gpu.queue.submit(Some(encoder.finish()));
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    staging.map_async(wgpu::MapMode::Read, .., move |result| {
+        let _ = tx.send(result);
+    });
+    gpu.wait_bounded(WAIT_BUDGET)?;
+    rx.recv_timeout(WAIT_BUDGET)
+        .map_err(|_| Stalled {
+            waited: WAIT_BUDGET,
+        })?
+        .expect("mapping the small buffer for reading");
+    let range = staging
+        .get_mapped_range(..)
+        .expect("reading the small buffer");
+    let value = *bytemuck::from_bytes::<T>(&range[..size as usize]);
+    drop(range);
+    staging.unmap();
+    Ok(value)
 }
 
 /// A storage or uniform entry visible to the compute stage.

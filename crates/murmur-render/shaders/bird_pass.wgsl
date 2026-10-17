@@ -75,13 +75,16 @@ fn bird_screen(b: Bird) -> BirdScreen {
     ) + scene.jitter;
     s.rho = min(WINGSPAN * inv, 16.0);
 
-    // The reference's wing exposure, flap shimmer included.
+    // The reference's wing exposure, flap shimmer included. A banked turn
+    // rotates `up` toward the observer, sharply increasing the projected wing
+    // area and producing the dark bands seen in Costanzo et al. (2022).
     let dhat = normalize(scene.eye - b.pos);
     let flap = 1.0 + scene.flap_amplitude * b.flap_amp * sin(b.flap_phase);
     let wing = clamp(abs(dot(up, dhat)) * flap, 0.0, 1.0);
+    let bank_contrast = 1.0 + 0.35 * sin(abs(b.roll));
     let atmosphere = clamp(1.0 - depth / ATMOSPHERE, 0.25, 1.0);
     s.atmosphere = atmosphere;
-    s.a = (0.15 + 0.85 * wing) * atmosphere;
+    s.a = (0.12 + 0.88 * wing * wing) * bank_contrast * atmosphere;
     s.flap = FLAP_DIHEDRAL * b.flap_amp * sin(b.flap_phase);
 
     // The bird's own axes in screen space, for the impostor's silhouette.

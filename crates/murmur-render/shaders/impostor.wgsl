@@ -27,13 +27,13 @@ const PI: f32 = 3.141592653589793;
 // Silhouette sigmas, in units of the projected wingspan ρ: body along the body
 // axis and across it, then a wing lobe's chord (along the body) and span (along
 // the wing axis, before the `cos(flap)` foreshortening).
-const BODY_AXIS: f32 = 0.18;
-const BODY_ACROSS: f32 = 0.06;
-const WING_CHORD: f32 = 0.06;
-const WING_SPAN: f32 = 0.13;
+const BODY_AXIS: f32 = 0.22;
+const BODY_ACROSS: f32 = 0.10;
+const WING_CHORD: f32 = 0.09;
+const WING_SPAN: f32 = 0.17;
 
 /// How far out along the wing axis a lobe's centre sits, at full span.
-const WING_OFFSET: f32 = 0.25;
+const WING_OFFSET: f32 = 0.27;
 
 struct ImpostorOut {
     @builtin(position) clip: vec4<f32>,

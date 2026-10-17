@@ -92,12 +92,18 @@ fn new_bird(pos: vec3<f32>, vel: vec3<f32>, slot: u32, perception: f32) -> Bird 
 fn spawn_group(count: u32) {
     let outward = vec3<f32>(cos(arc.bearing), sin(arc.bearing), 0.0);
     let tangent = vec3<f32>(-outward.y, outward.x, 0.0);
-    let heading = -outward * 0.6 + tangent * 0.8;
-    let side = cross(heading, vec3<f32>(0.0, 0.0, 1.0));
-    let base = outward * arc.radius + vec3<f32>(0.0, 0.0, P.z0);
     let span = min(arc.duration * ARRIVAL_END, 6.0);
-    let spread = max(sqrt(f32(P.n) / (P.v0 * span * (TAU * 0.5) * 0.5)), 3.0);
     let u = clamp((clock.time - f32(arc.epoch) * arc.duration) / span, 0.0, 1.0);
+    let sweep = sin(u * TAU * 1.35) * 0.28;
+    let heading = normalize_or_zero(
+        -outward * (0.62 - 0.18 * sweep) + tangent * (0.78 + 0.18 * sweep),
+    );
+    let side = normalize_or_zero(cross(heading, vec3<f32>(0.0, 0.0, 1.0)));
+    let ribbon_z = sin(u * TAU * 2.1) * 8.0;
+    let base = outward * (arc.radius - u * 24.0)
+        + tangent * (sweep * 32.0)
+        + vec3<f32>(0.0, 0.0, P.z0 + ribbon_z);
+    let spread = max(sqrt(f32(P.n) / (P.v0 * span * (TAU * 0.5) * 0.5)), 3.0);
     let flux = f32(P.n) * 6.0 * u * (1.0 - u) / span;
     let density = flux / (P.v0 * (TAU * 0.5) * spread * spread * 0.6);
     let perception = clamp(pow(P.n_c / ((4.0 / 3.0) * (TAU * 0.5) * max(density, 0.05)), 1.0 / 3.0), P.r_h, 5.0);
@@ -108,10 +114,14 @@ fn spawn_group(count: u32) {
         }
         let angle = uniform_range(0.0, TAU);
         let r = spread * sqrt(next_uniform());
-        let pos = base + side * (r * cos(angle))
-            + vec3<f32>(0.0, 0.0, r * sin(angle) * 0.6)
-            + heading * uniform_range(-0.5, 0.5);
+        let lateral = r * cos(angle) * 1.45;
+        let vertical = r * sin(angle) * 0.42;
+        let pos = base + side * lateral
+            + vec3<f32>(0.0, 0.0, vertical)
+            + heading * uniform_range(-0.8, 0.8);
+        let curl = side * ((lateral / max(spread, 1.0)) * 0.08);
         var dir = heading
+            + curl
             + vec3<f32>(
                 uniform_range(-0.05, 0.05),
                 uniform_range(-0.05, 0.05),

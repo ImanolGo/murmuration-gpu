@@ -487,13 +487,29 @@ impl Sim {
         read_small::<Falcon>(gpu, &self.falcon, "falcon")
     }
 
-    /// Points a mouse-steered falcon at `target` (`world.rs`'s window handler).
+    /// Points a mouse-steered falcon at `target` without any GPU readback or stall.
+    /// Writes only `mode` (offset 28) and `aim` (offset 32) into the GPU falcon buffer.
     pub fn steer_falcon(&mut self, gpu: &Gpu, target: glam::Vec3) {
-        if let Ok(mut falcon) = self.falcon(gpu) {
-            falcon.mode = Mode::Mouse.code();
-            falcon.aim = target.to_array();
-            self.write_falcon(gpu, &falcon);
+        if !self.falcon_active {
+            return;
         }
+        #[repr(C)]
+        #[derive(Clone, Copy, Pod, Zeroable)]
+        struct SteerWrite {
+            mode: u32,
+            aim: [f32; 3],
+        }
+        let payload = SteerWrite {
+            mode: Mode::Mouse.code(),
+            aim: target.to_array(),
+        };
+        gpu.queue
+            .write_buffer(&self.falcon, 28, bytemuck::bytes_of(&payload));
+    }
+
+    /// The GPU buffer holding the falcon state, for non-blocking tracking.
+    pub fn falcon_buffer(&self) -> &Buffer {
+        &self.falcon
     }
 
     /// Encodes and submits `steps` integration steps in one command buffer.
@@ -641,7 +657,7 @@ impl Sim {
         }
         if !bruteforce {
             self.grid.record(encoder, bind_group, self.n, timeline);
-            encoder.clear_buffer(&self.grid.counts, 0, Some(4));
+            encoder.clear_buffer(&self.grid.counts, 0, Some(8));
             dispatch(
                 encoder,
                 &self.prepare_decisions,

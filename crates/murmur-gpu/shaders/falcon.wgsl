@@ -64,25 +64,31 @@ fn falcon_reduce_kernel(@builtin(local_invocation_id) lid: vec3<u32>) {
     var sx = 0.0;
     var sy = 0.0;
     var sz = 0.0;
+    var count = 0.0;
     var i = t;
     while (i < P.n) {
-        let p = src[i].pos;
-        sx += p.x;
-        sy += p.y;
-        sz += p.z;
+        if src[i].live != 0u {
+            let p = src[i].pos;
+            sx += p.x;
+            sy += p.y;
+            sz += p.z;
+            count += 1.0;
+        }
         i += FALCON_THREADS;
     }
-    let n = f32(P.n);
+    let live_n = max(falcon_sum(count, t), 1.0);
     let c = vec3<f32>(
-        falcon_sum(sx, t) / n,
-        falcon_sum(sy, t) / n,
-        falcon_sum(sz, t) / n,
+        falcon_sum(sx, t) / live_n,
+        falcon_sum(sy, t) / live_n,
+        falcon_sum(sz, t) / live_n,
     );
 
     var m = 0.0;
     var j = t;
     while (j < P.n) {
-        m = max(m, length(src[j].pos - c));
+        if src[j].live != 0u {
+            m = max(m, length(src[j].pos - c));
+        }
         j += FALCON_THREADS;
     }
     // `world.rs` folds a 1.0 floor into the extent.

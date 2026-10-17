@@ -126,20 +126,25 @@ impl Arc {
     fn spawn_group(&mut self, world: &mut World, count: usize) {
         let outward = Vec3::new(self.arrival_bearing.cos(), self.arrival_bearing.sin(), 0.0);
         let tangent = Vec3::new(-outward.y, outward.x, 0.0);
-        // A grazing approach joins the display's turn instead of shooting
-        // through its centre. The cross-section depends on total flux, never
-        // on how many birds happen to spawn in this integration step.
-        let heading = -outward * 0.6 + tangent * 0.8;
-        let side = heading.cross(Vec3::Z);
-        let base = outward * self.arrival_radius + Vec3::Z * self.base_z0;
         let span = (self.duration * 0.15).min(6.0);
+        let u = (self.time / span).clamp(0.0, 1.0);
+        // Sweep the approach corridor across a gentle arc and wave height over
+        // arrival so the stream enters as a ribbon with natural velocity shear
+        // that folds into billowing sheets, rather than a rigid cylinder.
+        let sweep = (u * std::f32::consts::TAU * 1.35).sin() * 0.28;
+        let heading = (-outward * (0.62 - 0.18 * sweep) + tangent * (0.78 + 0.18 * sweep))
+            .normalize_or_zero();
+        let side = heading.cross(Vec3::Z).normalize_or_zero();
+        let ribbon_z = (u * std::f32::consts::TAU * 2.1).sin() * 8.0;
+        let base = outward * (self.arrival_radius - u * 24.0)
+            + tangent * (sweep * 32.0)
+            + Vec3::Z * (self.base_z0 + ribbon_z);
         let radius = (world.target_birds as f32 / (V0 * span * std::f32::consts::PI * 0.5))
             .sqrt()
             .max(3.0);
         // Start perception near the local flux density, rather than letting a
         // new bird scan hundreds of neighbours at the old fixed 5 m radius for
         // its first half-second. The adaptive law is unchanged after birth.
-        let u = (self.time / span).clamp(0.0, 1.0);
         let flux = world.target_birds as f32 * 6.0 * u * (1.0 - u) / span;
         let density = flux / (V0 * std::f32::consts::PI * radius * radius * 0.6);
         let perception = (N_C / (4.0 / 3.0 * std::f32::consts::PI * density.max(0.05)))
@@ -148,11 +153,16 @@ impl Arc {
         for _ in 0..count {
             let angle = self.rng.random_range(0.0..std::f32::consts::TAU);
             let r = radius * self.rng.random::<f32>().sqrt();
+            let lateral = r * angle.cos() * 1.45;
+            let vertical = r * angle.sin() * 0.42;
             let pos = base
-                + side * (r * angle.cos())
-                + Vec3::Z * (r * angle.sin() * 0.6)
-                + heading * self.rng.random_range(-0.5..0.5);
+                + side * lateral
+                + Vec3::Z * vertical
+                + heading * self.rng.random_range(-0.8..0.8);
+            // Slight lateral curl across the ribbon width seeds natural sheet folding.
+            let curl = side * ((lateral / radius.max(1.0)) * 0.08);
             let dir = (heading
+                + curl
                 + Vec3::new(
                     self.rng.random_range(-0.05..0.05),
                     self.rng.random_range(-0.05..0.05),

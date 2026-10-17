@@ -224,12 +224,14 @@ pub struct Renderer {
 
     /// The starling mesh, upload once: the same ten triangles every instance.
     mesh_vertices: Buffer,
-    /// The three per-level instance lists: `(bird index, weight)` pairs.
+    /// The तीन per-level instance lists: `(bird index, weight)` pairs.
     lod_lists: Option<Buffer>,
     /// The three `DrawIndirect` argument blocks the LOD pass counts into.
     lod_args: Buffer,
     /// The bird count the LOD buffers were sized for.
     lod_birds: u32,
+    /// Cached bind groups per ping-pong bird buffer `(buffer_addr, count)`.
+    bird_bind_cache: Vec<(usize, u32, BindGroup, BindGroup)>,
 
     sky_bind: BindGroup,
     falcon_bind: BindGroup,
@@ -776,6 +778,7 @@ impl Renderer {
             lod_lists: None,
             lod_args,
             lod_birds: 0,
+            bird_bind_cache: Vec::new(),
             sky_bind,
             falcon_bind,
             bird_bind: None,
@@ -939,8 +942,8 @@ impl Renderer {
         let count = count.max(1);
         // The list buffer only depends on the bird count, and the window
         // re-points the bird buffer every frame (the simulation ping-pongs it),
-        // so keep the allocation while the count holds and rebuild only the bind
-        // groups that name the new buffer.
+        // so keep the allocation while the count holds and reuse cached bind
+        // groups for the two ping-pong buffers.
         if self.lod_lists.is_none() || self.lod_birds != count {
             self.lod_lists = Some(device.create_buffer(&BufferDescriptor {
                 label: Some("render: lod lists"),
@@ -949,14 +952,20 @@ impl Renderer {
                 mapped_at_creation: false,
             }));
             self.lod_birds = count;
+            self.bird_bind_cache.clear();
+        }
+        let key = std::ptr::from_ref(birds) as usize;
+        if let Some((_, _, bird_bind, lod_bind)) = self
+            .bird_bind_cache
+            .iter()
+            .find(|(k, c, _, _)| *k == key && *c == count)
+        {
+            self.bird_bind = Some(bird_bind.clone());
+            self.lod_bind = Some(lod_bind.clone());
+            return;
         }
         let lists = self.lod_lists.clone().expect("just created");
-        gpu.queue.write_buffer(
-            &self.lod_args,
-            0,
-            bytemuck::cast_slice(&lod_args_template()),
-        );
-        self.bird_bind = Some(device.create_bind_group(&BindGroupDescriptor {
+        let bird_bind = device.create_bind_group(&BindGroupDescriptor {
             label: Some("render: bird bind"),
             layout: &self.bird_layout,
             entries: &[
@@ -973,8 +982,8 @@ impl Renderer {
                     resource: lists.as_entire_binding(),
                 },
             ],
-        }));
-        self.lod_bind = Some(device.create_bind_group(&BindGroupDescriptor {
+        });
+        let lod_bind = device.create_bind_group(&BindGroupDescriptor {
             label: Some("render: lod bind"),
             layout: &self.lod_layout,
             entries: &[
@@ -995,7 +1004,14 @@ impl Renderer {
                     resource: self.lod_args.as_entire_binding(),
                 },
             ],
-        }));
+        });
+        if self.bird_bind_cache.len() >= 4 {
+            self.bird_bind_cache.clear();
+        }
+        self.bird_bind_cache
+            .push((key, count, bird_bind.clone(), lod_bind.clone()));
+        self.bird_bind = Some(bird_bind);
+        self.lod_bind = Some(lod_bind);
     }
 
     /// Recreates the size-dependent targets after a resize.

@@ -48,6 +48,7 @@ pub fn decide(
     zigzag_k: u32,
     returning: &[bool],
     w_xi: f32,
+    arc_active: bool,
 ) -> Decision {
     let p = positions[i];
     let r = radii[i];
@@ -126,9 +127,27 @@ pub fn decide(
         0.0
     };
 
-    // Cohesion, stronger at the border through C_i (Eq. 5).
+    // Cohesion, stronger at the border through C_i (Eq. 5). During an evening
+    // display (`arc_active`), longitudinal cohesion along the flight axis is
+    // relaxed and boundary birds pick up a slow spatial wave + spontaneous edge
+    // turns, so the flock folds into sweeping ribbons, sheets and dark turning
+    // bands even without a falcon.
     if n_star > 0 {
-        force += coh.normalize_or_zero() * (W_COH * centrality);
+        let mut coh_dir = coh.normalize_or_zero();
+        if arc_active {
+            coh_dir -= f_i * (coh_dir.dot(f_i) * 0.68);
+        }
+        force += coh_dir * (W_COH * centrality);
+    }
+    if arc_active {
+        let side = side_of(f_i);
+        let phase_a = p.x * 0.048 + p.y * 0.038 - time * 0.72;
+        let phase_b = p.x * 0.028 - p.y * 0.052 + time * 0.48;
+        let wave_lat = phase_a.sin() * 0.65 + phase_b.cos() * 0.35;
+        let wave_vert = (phase_b * 0.9 + p.z * 0.06).sin();
+        let edge_weight = (centrality - 0.14).max(0.0);
+        force += side * (wave_lat * 0.36 * (0.40 + edge_weight))
+            + Vec3::Z * (wave_vert * 0.12 * (0.25 + edge_weight));
     }
 
     // Alignment (Eq. 8): proportional to the misalignment from the mean
@@ -164,6 +183,10 @@ pub fn decide(
             returning = false;
         } else {
             force += inward_side * (W_ROOST_H * (dist_h - R_ROOST).max(ROOST_TURN_MARGIN));
+            if arc_active {
+                let sweep_vert = (p.x * 0.032 - p.y * 0.028 + time * 0.65).sin();
+                force += Vec3::Z * (sweep_vert * 0.11);
+            }
         }
     }
 
@@ -186,24 +209,29 @@ pub fn decide(
     // Copy a zigzag: a non-alarmed bird starts one when at least `zigzag_k` of
     // its neighbours are in a copyable zigzag. It takes the roll direction of
     // the majority of those neighbours, so the dark band is coherent rather
-    // than noise.
-    let start_zigzag = if !escape[i].alarmed
-        && !escape[i].zigzag_active
-        && time >= escape[i].cooldown_until
-        && zigzag_neighbours >= zigzag_k
-    {
-        Some(if zigzag_sign_sum > 0.0 {
-            1.0
-        } else if zigzag_sign_sum < 0.0 {
-            -1.0
-        } else if rng.random::<bool>() {
-            1.0
+    // than noise. During an evening display, border birds also occasionally
+    // initiate a spontaneous turn wave that propagates through the flock.
+    let start_zigzag =
+        if !escape[i].alarmed && !escape[i].zigzag_active && time >= escape[i].cooldown_until {
+            if zigzag_neighbours >= zigzag_k {
+                Some(if zigzag_sign_sum > 0.0 {
+                    1.0
+                } else if zigzag_sign_sum < 0.0 {
+                    -1.0
+                } else if rng.random::<bool>() {
+                    1.0
+                } else {
+                    -1.0
+                })
+            } else if arc_active && centrality > 0.38 && rng.random::<f32>() < 0.0011 {
+                let phase = (p.x * 0.035 - p.y * 0.035 + time * 0.55).sin();
+                Some(if phase >= 0.0 { 1.0 } else { -1.0 })
+            } else {
+                None
+            }
         } else {
-            -1.0
-        })
-    } else {
-        None
-    };
+            None
+        };
 
     Decision {
         force,

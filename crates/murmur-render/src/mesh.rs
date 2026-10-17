@@ -42,11 +42,11 @@ pub const MESH_TAU: f32 = 4.6051702;
 /// of wingspan. A thin body and narrow wing chord replace the old round blobs.
 /// Checked against impostor.wgsl by mesh_area.rs.
 pub const IMPOSTOR_SHAPE: [(&str, f32); 5] = [
-    ("BODY_AXIS", 0.18),
-    ("BODY_ACROSS", 0.06),
-    ("WING_CHORD", 0.06),
-    ("WING_SPAN", 0.13),
-    ("WING_OFFSET", 0.25),
+    ("BODY_AXIS", 0.22),
+    ("BODY_ACROSS", 0.10),
+    ("WING_CHORD", 0.09),
+    ("WING_SPAN", 0.17),
+    ("WING_OFFSET", 0.27),
 ];
 
 /// Starling wingspan \[m\]: the tip-to-tip width of [`VERTICES`], and the same

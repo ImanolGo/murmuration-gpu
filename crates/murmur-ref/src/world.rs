@@ -367,6 +367,7 @@ impl World {
 
         // Decisions for every bird whose reaction is due. They read a snapshot
         // of the flock, so sequential and parallel execution agree exactly.
+        let arc_active = self.arc.is_some();
         {
             let Self {
                 position,
@@ -402,6 +403,7 @@ impl World {
                         k,
                         returning,
                         *w_xi,
+                        arc_active,
                     ));
                 }
             }

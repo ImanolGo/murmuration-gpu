@@ -22,7 +22,7 @@ pub const EYE_HEIGHT: f32 = 1.7;
 pub const EYE_DISTANCE: f32 = 150.0;
 
 /// Nominal vertical field of view \[rad\].
-pub const FOV_V: f32 = 55.0 * std::f32::consts::PI / 180.0;
+pub const FOV_V: f32 = 42.0 * std::f32::consts::PI / 180.0;
 
 /// Scale the visible plane, not the angle. Multiplying a 45° angle by four
 /// produces a degenerate 180° projection; scaling tan(fov/2) keeps it finite.
@@ -34,7 +34,7 @@ pub fn scaled_fov(fov: f32, scale: f32) -> f32 {
 const FILL: f32 = 0.6;
 
 /// Bounds on the eased field of view \[rad\].
-const FOV_MIN: f32 = 45.0 * std::f32::consts::PI / 180.0;
+const FOV_MIN: f32 = 16.0 * std::f32::consts::PI / 180.0;
 const FOV_MAX: f32 = 100.0 * std::f32::consts::PI / 180.0;
 
 /// The flock the camera frames: positions and velocities, and the world clock.
@@ -69,8 +69,14 @@ pub struct Camera {
     pub right: Vec3,
     /// Unit up direction.
     pub up: Vec3,
-    /// Bearing around the roost \[rad\], changed by the `c` key.
+    /// Bearing around the roost \[rad\], changed by `c`, mouse drag, or `A`/`D`/Left/Right.
     pub bearing: f32,
+    /// Distance of the observer from the roost centre \[m\].
+    pub distance: f32,
+    /// User zoom multiplier on the auto-framed field of view (<1 zooms in, >1 zooms out).
+    pub zoom_factor: f32,
+    /// Manual pitch offset \[rad\] on top of tracking elevation.
+    pub pitch_offset: f32,
     /// Current vertical field of view \[rad\], eased toward the target.
     pub fov: f32,
     smoothed_target: Vec3,
@@ -93,11 +99,37 @@ impl Camera {
             right: Vec3::X,
             up: Vec3::Z,
             bearing: -std::f32::consts::FRAC_PI_2,
+            distance: EYE_DISTANCE,
+            zoom_factor: 1.0,
+            pitch_offset: 0.0,
             fov: FOV_V,
             smoothed_target: Vec3::ZERO,
             ready: false,
             last_world_time: 0.0,
         }
+    }
+
+    /// Resets interactive camera offsets (distance, zoom, pitch) back to defaults.
+    pub fn reset_view(&mut self) {
+        self.distance = EYE_DISTANCE;
+        self.zoom_factor = 1.0;
+        self.pitch_offset = 0.0;
+    }
+
+    /// Orbits the observer horizontally (`delta_bearing` in rad) and tilts elevation (`delta_pitch` in rad).
+    pub fn orbit(&mut self, delta_bearing: f32, delta_pitch: f32) {
+        self.bearing = (self.bearing + delta_bearing).rem_euclid(std::f32::consts::TAU);
+        self.pitch_offset = (self.pitch_offset + delta_pitch).clamp(-0.45, 0.55);
+    }
+
+    /// Zooms the lens in (`factor < 1`) or out (`factor > 1`).
+    pub fn zoom(&mut self, factor: f32) {
+        self.zoom_factor = (self.zoom_factor * factor).clamp(0.25, 2.5);
+    }
+
+    /// Moves the observer closer to or further from the roost \[m\].
+    pub fn dolly(&mut self, delta_m: f32) {
+        self.distance = (self.distance + delta_m).clamp(40.0, 360.0);
     }
 
     /// Aim the initial view before asynchronous telemetry arrives, avoiding a
@@ -139,11 +171,10 @@ impl Camera {
         self.last_world_time = view.time;
         self.smoothed_target += (centroid - self.smoothed_target) * (1.0 - (-dt / 2.0).exp());
 
-        // A fixed spot on the ground, chosen by bearing. The observer does not
-        // dolly back and forth as the flock changes size.
+        // Observer spot on the ground, chosen by bearing and interactive distance.
         self.eye = Vec3::new(
-            EYE_DISTANCE * self.bearing.cos(),
-            EYE_DISTANCE * self.bearing.sin(),
+            self.distance * self.bearing.cos(),
+            self.distance * self.bearing.sin(),
             EYE_HEIGHT,
         );
 
@@ -151,7 +182,14 @@ impl Camera {
         if forward.length_squared() < 1e-6 {
             forward = Vec3::Y;
         }
-        self.forward = forward.normalize();
+        forward = forward.normalize();
+        if self.pitch_offset.abs() > 1e-5 {
+            let horiz_right = forward.cross(Vec3::Z).normalize_or_zero();
+            let up0 = horiz_right.cross(forward).normalize_or_zero();
+            forward = (forward * self.pitch_offset.cos() + up0 * self.pitch_offset.sin())
+                .normalize_or_zero();
+        }
+        self.forward = forward;
         let mut right = self.forward.cross(Vec3::Z);
         if right.length_squared() < 1e-6 {
             right = Vec3::X;
@@ -184,9 +222,10 @@ impl Camera {
             let y_extent = y0.abs().max(y1.abs());
             // Fill `FILL` of the binding (smaller) screen dimension.
             let t = (y_extent.max(x_extent / aspect.max(0.1))) / FILL;
-            2.0 * t.atan()
+            2.0 * (t * self.zoom_factor).atan()
         };
-        let target_fov = target_fov.clamp(FOV_MIN, FOV_MAX);
+        let min_fov = (FOV_MIN * self.zoom_factor).clamp(6.0_f32.to_radians(), FOV_MAX);
+        let target_fov = target_fov.clamp(min_fov, FOV_MAX);
         // Ease the zoom (time constant ~3 s).
         if initializing {
             self.fov = target_fov;
@@ -196,7 +235,7 @@ impl Camera {
             let tau = if target_fov > self.fov { 0.6 } else { 3.0 };
             self.fov += (target_fov - self.fov) * (1.0 - (-dt / tau).exp());
         }
-        self.fov = self.fov.clamp(FOV_MIN, FOV_MAX);
+        self.fov = self.fov.clamp(min_fov, FOV_MAX);
     }
 
     /// Focal length in pixels for a pixel grid `pixel_h` dots tall.

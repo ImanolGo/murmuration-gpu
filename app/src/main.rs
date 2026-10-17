@@ -48,7 +48,7 @@ use murmur_render::tracking::FlockTracker;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
-    event::{ElementState, WindowEvent},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, EventLoop},
     keyboard::{Key, NamedKey},
     window::{Window, WindowId},
@@ -1571,6 +1571,9 @@ struct Renderer {
     /// Wall clock of the previous frame, so the flock steps in real time.
     last: Instant,
     clock: FrameClock,
+    paused: bool,
+    mouse_dragging: bool,
+    last_cursor: Option<(f32, f32)>,
     profile: Option<window_profile::Profile>,
     profile_done: bool,
 }
@@ -1703,6 +1706,9 @@ impl Renderer {
             birds: args.birds,
             last: Instant::now(),
             clock: FrameClock::default(),
+            paused: false,
+            mouse_dragging: false,
+            last_cursor: None,
             profile,
             profile_done: false,
             seed: args.seed,
@@ -1772,7 +1778,11 @@ impl Renderer {
         let now = Instant::now();
         let dt = (now - self.last).as_secs_f32().clamp(0.0, 0.25);
         self.last = now;
-        let steps = self.clock.steps(dt, self.sim.params.dt);
+        let steps = if self.paused {
+            0
+        } else {
+            self.clock.steps(dt, self.sim.params.dt)
+        };
         mark = Instant::now();
         if let Some(profile) = &self.profile {
             profile.advance(&self.gpu, &mut self.sim, steps);
@@ -1798,14 +1808,19 @@ impl Renderer {
         );
         spans[3] = mark.elapsed().as_secs_f64() * 1000.0;
         mark = Instant::now();
-        self.tracker
-            .request(&self.gpu, self.sim.bird_buffer(), self.sim.time());
+        let falcon_buf = self.sim.falcon_active().then(|| self.sim.falcon_buffer());
+        self.tracker.request_with_falcon(
+            &self.gpu,
+            self.sim.bird_buffer(),
+            falcon_buf,
+            self.sim.time(),
+        );
 
         // The bird buffer ping-pongs each step, so re-point the coverage pass.
         self.frame
             .set_birds(&self.gpu, self.sim.bird_buffer(), self.sim.len() as u32);
         let falcon = if self.sim.falcon_active() {
-            Some(self.sim.falcon(&self.gpu)?.position())
+            self.tracker.predicted_falcon(self.sim.time())
         } else {
             None
         };
@@ -1876,22 +1891,89 @@ impl ApplicationHandler for App {
                 }
                 event_loop.exit();
             }
-            WindowEvent::KeyboardInput { event, .. }
-                if event.state == ElementState::Pressed && !event.repeat =>
-            {
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.logical_key {
                     Key::Named(NamedKey::Escape) => event_loop.exit(),
                     Key::Character(ref key) if key.as_str() == "q" => event_loop.exit(),
-                    // `f` calls the falcon (the terminal version's key).
-                    Key::Character(ref key) if key.as_str() == "f" => {
-                        renderer
-                            .sim
-                            .spawn_falcon(&renderer.gpu, renderer.seed, renderer.z0);
+                    Key::Named(NamedKey::Space) if !event.repeat => {
+                        renderer.paused = !renderer.paused;
+                    }
+                    // `f` toggles the falcon (autonomous or mouse-steered).
+                    Key::Character(ref key) if key.as_str() == "f" && !event.repeat => {
+                        if renderer.sim.falcon_active() {
+                            renderer
+                                .sim
+                                .write_falcon(&renderer.gpu, &murmur_gpu::falcon::Falcon::absent());
+                        } else {
+                            renderer
+                                .sim
+                                .spawn_falcon(&renderer.gpu, renderer.seed, renderer.z0);
+                        }
+                    }
+                    // `c` steps the observer bearing around the roost; `r` resets view.
+                    Key::Character(ref key) if key.as_str() == "c" && !event.repeat => {
+                        renderer.camera.orbit(std::f32::consts::FRAC_PI_4, 0.0);
+                    }
+                    Key::Character(ref key) if key.as_str() == "r" && !event.repeat => {
+                        renderer.camera.reset_view();
+                    }
+                    // Orbit left / right
+                    Key::Named(NamedKey::ArrowLeft) => renderer.camera.orbit(-0.08, 0.0),
+                    Key::Named(NamedKey::ArrowRight) => renderer.camera.orbit(0.08, 0.0),
+                    Key::Character(ref key) if key.as_str().eq_ignore_ascii_case("a") => {
+                        renderer.camera.orbit(-0.08, 0.0);
+                    }
+                    Key::Character(ref key) if key.as_str().eq_ignore_ascii_case("d") => {
+                        renderer.camera.orbit(0.08, 0.0);
+                    }
+                    // Move closer / further from the roost
+                    Key::Named(NamedKey::ArrowUp) => renderer.camera.dolly(-12.0),
+                    Key::Named(NamedKey::ArrowDown) => renderer.camera.dolly(12.0),
+                    Key::Character(ref key) if key.as_str().eq_ignore_ascii_case("w") => {
+                        renderer.camera.dolly(-12.0);
+                    }
+                    Key::Character(ref key) if key.as_str().eq_ignore_ascii_case("s") => {
+                        renderer.camera.dolly(12.0);
+                    }
+                    // Zoom lens in / out
+                    Key::Character(ref key) if matches!(key.as_str(), "+" | "=" | "]") => {
+                        renderer.camera.zoom(0.88);
+                    }
+                    Key::Character(ref key) if matches!(key.as_str(), "-" | "_" | "[") => {
+                        renderer.camera.zoom(1.14);
                     }
                     _ => {}
                 }
             }
+            WindowEvent::MouseInput { state, button, .. } => {
+                if matches!(button, MouseButton::Left | MouseButton::Right) {
+                    renderer.mouse_dragging = state == ElementState::Pressed;
+                    if !renderer.mouse_dragging {
+                        renderer.last_cursor = None;
+                    }
+                }
+            }
+            WindowEvent::MouseWheel { delta, .. } => {
+                let scroll = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(pos) => (pos.y as f32) / 40.0,
+                };
+                if scroll.abs() > 1e-3 {
+                    renderer.camera.zoom(0.90_f32.powf(scroll));
+                }
+            }
             WindowEvent::CursorMoved { position, .. } => {
+                let (x, y) = (position.x as f32, position.y as f32);
+                if renderer.mouse_dragging {
+                    if let Some((lx, ly)) = renderer.last_cursor {
+                        let dx = x - lx;
+                        let dy = y - ly;
+                        renderer.camera.orbit(-dx * 0.005, -dy * 0.003);
+                    }
+                    renderer.last_cursor = Some((x, y));
+                    return;
+                }
+                renderer.last_cursor = Some((x, y));
                 // Watching should not accidentally summon a predator. Press f
                 // (or use --falcon) first, then move the mouse to steer it.
                 if !renderer.sim.falcon_active() {
@@ -1904,8 +1986,8 @@ impl ApplicationHandler for App {
                     positions.iter().copied().sum::<glam::Vec3>() / positions.len() as f32
                 };
                 let target = renderer.camera.cursor_to_plane(
-                    position.x as f32,
-                    position.y as f32,
+                    x,
+                    y,
                     renderer.config.width as f32,
                     renderer.config.height as f32,
                     plane,

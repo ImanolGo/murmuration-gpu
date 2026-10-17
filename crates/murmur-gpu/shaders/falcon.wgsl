@@ -76,12 +76,11 @@ fn falcon_reduce_kernel(@builtin(local_invocation_id) lid: vec3<u32>) {
         }
         i += FALCON_THREADS;
     }
+    let sum_x = falcon_sum(sx, t);
+    let sum_y = falcon_sum(sy, t);
+    let sum_z = falcon_sum(sz, t);
     let live_n = max(falcon_sum(count, t), 1.0);
-    let c = vec3<f32>(
-        falcon_sum(sx, t) / live_n,
-        falcon_sum(sy, t) / live_n,
-        falcon_sum(sz, t) / live_n,
-    );
+    let c = vec3<f32>(sum_x / live_n, sum_y / live_n, sum_z / live_n);
 
     var m = 0.0;
     var j = t;

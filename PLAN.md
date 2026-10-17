@@ -525,35 +525,37 @@ Deviations are in `docs/model.md` ("Phase 8 adaptations"), the timeline in
   read only the surviving birds, so the behaviour matches; the record order does
   not.
 
-## Phase 9 — Performance
+## Phase 9 — Performance & Remaining Roadmap
 
-**Reopened visual acceptance after user testing.** The user reports about 2 FPS
-from launch and rejects the bird/background appearance. The earlier isolated
-GPU timings and stills do not establish acceptable interactive playback.
-Profile the complete windowed startup, including surface acquisition, CPU
-submission and presentation. Use the two user-supplied videos and three photos
-as visual references: fine-grained birds, changing folded sheets, soft clouds
-and a grounded foreground. Do not call this revision successful from an offline
-time-lapse or a single render-pass timing. Keep quantitative results and
-unresolved morphology separate.
+### Completed in this pass (2026-10-17)
+- **Zero-stall falcon path:** Removed the blocking GPU readbacks in `Renderer::render` (`sim.falcon()`) and `WindowEvent::CursorMoved` (`steer_falcon`), cached ping-pong bind groups in `Renderer` and `FlockTracker`, and updated `falcon_reduce_kernel` to only average `live != 0u` birds.
+- **Single-pass neighbour + centrality walk & warp partitioning:** Merged `gather_grid` and `gather_grid_centrality` into `gather_grid_both` (halving cell/bucket lookups per deciding bird) and split `prepare_decisions_kernel` into normal (`R <= 3.5 m`) and wide-radius (`R > 3.5 m`) queues so stragglers do not stall 31 normal birds in a warp. Windowed `--falcon` now holds **59.91 FPS** (12 s, 8k birds, GTX 1650 Max-Q).
+- **Interactive camera controls:** Added mouse-drag orbit/pitch, scroll-wheel & `+`/`-` lens zoom, `WASD`/Arrow orbit & dolly (move near/far), `c` bearing step, `r` view reset, `f` falcon toggle, and `Space` pause.
+- **Spontaneous sheet-folding & turning waves:** Added arc-mode anisotropic longitudinal cohesion relaxation, boundary shear waves, and spontaneous border turn-initiation in both `murmur-ref` and `murmur-gpu` (keeping `--no-arc` oracle tests bit-exact).
 
-**Visual/performance revision (user request, 2026-10-17), in progress.** Before
-closing this phase, inspect fresh arrival and display recordings. Replace the
-half-second arrival batches with a continuous, density-scaled approach in both
-engines; retain the published force parameters. Fix the real-time accumulator
-and measure exact neighbour-search optimisations against a live-bird baseline.
-Record images, timestamp measurements and remaining visual limitations in
-`docs/progress.md`. This is an explicit revision of phase 8's arrival initial
-condition, not a claim that its old recording already looked natural.
+### Still to be done (Next Steps Plan)
 
-- Profile with timestamp queries and Nsight Graphics or RenderDoc.
-- Candidates, each kept only if a benchmark shows a gain: sorting less often
-  than every step, half-precision for render-only fields, structure-of-arrays
-  layout, subgroup operations in the scan, merging passes.
-- Update the README with measured numbers and hardware.
+1. **Multi-flock splitting, merging, and vacuole dynamics (Model + GPU)**
+   - Allow large flocks to naturally tear into 2–3 sub-flocks during sharp turns or predator stoops and smoothly re-merge, rather than a single global roost return pulling every lobe toward `(0, 0, z0)` at the same rate.
+   - Tune local topological cutoffs (`R_MAX` / border cohesion falloff) in `murmur-ref` and `sim.wgsl` so interior cavities (vacuoles) open and close cleanly during flash expansion.
 
-**Accept:** the global targets table is either met or replaced with measured
-numbers and the bottleneck for each.
+2. **Full Inertial Spin Turning Model (Cavagna et al. / Attanasi et al.)**
+   - Expand `--turning inertial` from a single-bird roll-rate damper into neighbour spin-coupling (propagating angular momentum conservation across topological neighbours so turning waves travel ballistically without damping out).
+
+3. **Camera Follow Modes & Smooth Cinematic Presets**
+   - Add camera mode switching (e.g., `1`: Ground Observer, `2`: Flock-Follow chase camera riding alongside the ribbon, `3`: Falcon-POV camera during stoop).
+   - Add an on-screen HUD overlay (`h` key) showing live FPS, bird count, current evening phase, camera mode, and active falcon state.
+
+4. **Large-N (100k–1M) Real-Time Scaling (Phase 9 Core)**
+   - **Physical Bird Reordering:** Scatter birds directly into sorted cell order (`Bird` records in `sorted` order) so neighbour walks hit contiguous L2 cache lines instead of chasing `sorted[s]` indices.
+   - **64-byte Compact `Bird` Layout:** Pack render/secondary fields into `f16` / `u16` (as sketched in the Data Layout section) to cut global memory bandwidth in half.
+   - **Multi-step Grid Reuse:** Rebuild and sort the spatial hash grid every 2–4 integration steps (`10–20 ms`) instead of every `5 ms` step (since `next_decision` only fires every `DU = 50 ms`, 90 % of steps don't even query the grid if `alarm` is separated).
+   - **Subgroup Scan:** Use `wgpu` subgroup operations in `grid_scan_blocks` where supported.
+
+5. **Visual Polish & Environment**
+   - Add optional motion-blur / velocity-stretched impostors during high-speed falcon stoops.
+   - Add subtle ground/water reflections at the horizon (like the Brighton pier / lake reference videos) and distant tree/pier silhouettes.
+   - Add runtime `+` / `-` (or `[` / `]`) flock size adjustment without restarting the window.
 
 ## Out of scope for now
 

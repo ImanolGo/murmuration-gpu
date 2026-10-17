@@ -170,17 +170,20 @@ present they want it to themselves — a window or a `--record` run in another
 terminal will make them many times slower, and on a hybrid-graphics laptop
 `prime-run` picks the discrete GPU instead of the integrated one.
 
-Planned controls:
+Controls:
 
-| Input          | Action                                  |
-| -------------- | --------------------------------------- |
-| `q` / `Esc`    | Quit                                    |
-| `Space`        | Pause or resume                         |
-| Mouse drag     | Orbit the observer around the roost     |
-| `f`            | Spawn an autonomous falcon              |
-| Move the mouse | Steer an existing falcon (`f` first)     |
-| `+` / `-`      | Change the flock size                   |
-| `h`            | Show or hide the overlay and timings    |
+| Input                         | Action                                               |
+| ----------------------------- | ---------------------------------------------------- |
+| `q` / `Esc`                   | Quit                                                 |
+| `Space`                       | Pause or resume                                      |
+| Mouse drag (left/right)       | Orbit and tilt the camera around the roost           |
+| Mouse wheel / `+` `-`         | Zoom the lens in or out                              |
+| `W` / `S` or `Up` / `Down`    | Move the observer closer to or further from the roost|
+| `A` / `D` or `Left` / `Right` | Orbit the observer horizontally around the roost     |
+| `c`                           | Step the observer bearing by 45°                     |
+| `r`                           | Reset camera distance, zoom and tilt                 |
+| `f`                           | Toggle the falcon (autonomous or mouse-steered)      |
+| Move the mouse                | Steer an active falcon (`f` or `--falcon` first)     |
 
 ## How it works
 

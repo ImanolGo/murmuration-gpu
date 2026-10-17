@@ -625,72 +625,12 @@ fn alarm(b_in: Bird, time: f32) -> Bird {
     return b;
 }
 
-struct GatherBoth {
-    acc: Acc,
-    cen: Cen,
-}
-
-// Single-pass grid walk over the `2R_i` box: gathers both `Acc` (inside `R_i`)
-// and `Cen` (inside `2R_i`) in one traversal, halving cell and bucket lookups.
-fn gather_grid_both(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> GatherBoth {
-    var acc = acc_empty();
-    var cen = cen_empty();
-    let r2 = radius * radius;
-    let r_cen = 2.0 * radius;
-    let r_cen2 = r_cen * r_cen;
-    let lo = cell_of(p - vec3<f32>(r_cen));
-    let hi = cell_of(p + vec3<f32>(r_cen));
-    for (var cz = lo.z; cz <= hi.z; cz = cz + 1) {
-        for (var cy = lo.y; cy <= hi.y; cy = cy + 1) {
-            for (var cx = lo.x; cx <= hi.x; cx = cx + 1) {
-                let cell = vec3<i32>(cx, cy, cz);
-                if !cell_intersects_sphere(cell, p, r_cen2) {
-                    continue;
-                }
-                let b = bucket_of(cell);
-                let end = offsets[b + 1u];
-                for (var s = offsets[b]; s < end; s = s + 1u) {
-                    let j = sorted[s];
-                    if j == i {
-                        continue;
-                    }
-                    let other = src[j];
-                    if other.live == 0u {
-                        continue;
-                    }
-                    if any(cell_of(other.pos) != cell) {
-                        continue;
-                    }
-                    let d = other.pos - p;
-                    let d2 = dot(d, d);
-                    if d2 <= r_cen2 {
-                        let dist = sqrt(d2);
-                        cen = cen_add(cen, d, dist);
-                        if d2 <= r2 {
-                            acc = acc_add(acc, other, d, dist, f_i, time);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return GatherBoth(acc, cen);
-}
-
 // The decided bird, from the bounded neighbour walk. `b` has already been
 // through `alarm`.
 fn decide(i: u32, b: Bird, time: f32) -> Bird {
     let f_i = forward(b.vel);
-    let r_cen = 2.0 * b.radius;
-    let lo_cen = cell_of(b.pos - vec3<f32>(r_cen));
-    let hi_cen = cell_of(b.pos + vec3<f32>(r_cen));
-    let live = offsets[P.buckets];
-    if grid_span(lo_cen, hi_cen) <= f32(live) {
-        let both = gather_grid_both(b.pos, b.radius, i, f_i, time);
-        return resolve(b, time, b.radius, f_i, both.acc, both.cen);
-    }
     let acc = gather(b.pos, b.radius, i, f_i, time);
-    let cen = gather_centrality(b.pos, r_cen, i);
+    let cen = gather_centrality(b.pos, 2.0 * b.radius, i);
     return resolve(b, time, b.radius, f_i, acc, cen);
 }
 
@@ -719,33 +659,19 @@ fn prepare_decisions_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         // After scatter, `bucket` and `counts` are scratch space: queries only
         // read `offsets` and `sorted`. Pack the ~10% of birds due a decision so
         // whole warps do useful work instead of divergent, mostly idle lanes.
-        // Partition into two queues so wide-radius stragglers (`R > 3.5 m`) do
-        // not stall 31 normal birds in the same warp.
-        if b.radius > 3.5 {
-            let slot = atomicAdd(&counts[1], 1u);
-            bucket[P.n - 1u - slot] = i;
-        } else {
-            let slot = atomicAdd(&counts[0], 1u);
-            bucket[slot] = i;
-        }
+        let slot = atomicAdd(&counts[0], 1u);
+        bucket[slot] = i;
     }
     dst[i] = b;
 }
 
 @compute @workgroup_size(256)
 fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let normal_count = atomicLoad(&counts[0]);
-    let wide_count = atomicLoad(&counts[1]);
-    if gid.x < normal_count {
-        let i = bucket[gid.x];
-        dst[i] = decide(i, dst[i], clock.time);
+    if gid.x >= atomicLoad(&counts[0]) {
         return;
     }
-    let wide_idx = gid.x - normal_count;
-    if wide_idx < wide_count {
-        let i = bucket[P.n - 1u - wide_idx];
-        dst[i] = decide(i, dst[i], clock.time);
-    }
+    let i = bucket[gid.x];
+    dst[i] = decide(i, dst[i], clock.time);
 }
 
 @compute @workgroup_size(256)

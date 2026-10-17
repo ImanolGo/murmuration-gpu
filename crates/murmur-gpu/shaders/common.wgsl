@@ -21,10 +21,28 @@ struct Params {
     r_flash: f32, v_flash: f32, w_flash: f32, flash_duration: f32,
     zigzag_max_roll: f32, zigzag_duration: f32, zigzag_cooldown: f32, reed_top: f32,
     n: u32, zigzag_k: u32, seed: u32, buckets: u32,
-    inv_cell: f32, pad1: f32, pad2: f32, pad3: u32,
+    inv_cell: f32, falcon_cruise: f32, falcon_climb: f32, falcon_stoop: f32,
+    falcon_attack_height: f32, falcon_attack_min: f32, falcon_attack_max: f32, pad3: u32,
 }
 
 @group(0) @binding(0) var<uniform> P: Params;
+
+// The falcon's agent state (PLAN.md phase 7). Mirrored by
+// `crates/murmur-gpu/src/falcon.rs` and checked field for field in
+// `tests/layout.rs`. It lives here because both `sim.wgsl` (the alarm and flee
+// forces read the falcon's position) and `falcon.wgsl` (the update advances it)
+// are compiled with this file prepended; the falcon's *kernels* are in
+// `falcon.wgsl`. The grid module sees the declaration and ignores it.
+struct Falcon {
+    pos: vec3<f32>, speed: f32,
+    vel: vec3<f32>, mode: u32,
+    aim: vec3<f32>, state: u32,
+    dive: vec3<f32>, until: f32,
+    centroid: vec3<f32>, rng: u32,
+    extent: f32, present: u32, pad0: u32, pad1: u32,
+}
+
+@group(0) @binding(9) var<storage, read_write> falcon: Falcon;
 
 // The grid cell a position falls in: `floor(p / cell)`. The CPU oracle's
 // `Grid::coord` uses `params::GRID_CELL = 4.0 m`; the GPU uses its own

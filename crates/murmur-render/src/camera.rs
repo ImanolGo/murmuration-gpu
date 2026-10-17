@@ -199,6 +199,30 @@ impl Camera {
             depth,
         ))
     }
+
+    /// The point a cursor pixel is aimed at, on the plane through `plane_point`
+    /// perpendicular to the view. Mirrors the reference's
+    /// `camera.cursor_to_plane`, in window pixels instead of terminal cells.
+    pub fn cursor_to_plane(
+        &self,
+        x: f32,
+        y: f32,
+        pixel_w: f32,
+        pixel_h: f32,
+        plane_point: Vec3,
+    ) -> Vec3 {
+        let f = self.focal_px(pixel_h as usize);
+        let ndc_x = (x - pixel_w / 2.0) / f;
+        let ndc_y = (y - pixel_h / 2.0) / f;
+        let dir = (self.forward + self.right * ndc_x - self.up * ndc_y).normalize();
+        let normal = self.forward;
+        let denom = dir.dot(normal);
+        if denom.abs() < 1e-6 {
+            return plane_point;
+        }
+        let t = (plane_point - self.eye).dot(normal) / denom;
+        self.eye + dir * t
+    }
 }
 
 /// The 5th and 95th percentiles of `v`, sorted in place.

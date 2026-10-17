@@ -117,7 +117,11 @@ pub struct Scene {
     pub _pad4: f32,
     /// Sub-pixel offset of this frame's sample \[px\], for temporal AA.
     pub jitter: [f32; 2],
+    /// Whether a falcon is hunting (1/0).
+    pub falcon: f32,
     pub _pad5: f32,
+    /// The falcon's position when `falcon` is 1 \[m\].
+    pub falcon_pos: [f32; 3],
     pub _pad6: f32,
 }
 
@@ -149,9 +153,26 @@ impl Scene {
             time,
             _pad4: 0.0,
             jitter: [0.0, 0.0],
+            falcon: 0.0,
             _pad5: 0.0,
+            falcon_pos: [0.0, 0.0, 0.0],
             _pad6: 0.0,
         }
+    }
+
+    /// Sets the falcon the coverage pass draws, or clears it.
+    pub fn with_falcon(mut self, position: Option<glam::Vec3>) -> Self {
+        match position {
+            Some(p) => {
+                self.falcon = 1.0;
+                self.falcon_pos = p.to_array();
+            }
+            None => {
+                self.falcon = 0.0;
+                self.falcon_pos = [0.0, 0.0, 0.0];
+            }
+        }
+        self
     }
 }
 
@@ -179,6 +200,8 @@ pub struct Renderer {
     mesh: RenderPipeline,
     impostor: RenderPipeline,
     coverage: RenderPipeline,
+    /// The falcon's footprint, drawn from the scene alone (PLAN.md phase 7).
+    falcon: RenderPipeline,
     tonemap: RenderPipeline,
     taa: RenderPipeline,
     exposure_pipeline: ComputePipeline,
@@ -200,6 +223,7 @@ pub struct Renderer {
     lod_birds: u32,
 
     sky_bind: BindGroup,
+    falcon_bind: BindGroup,
     bird_bind: Option<BindGroup>,
     lod_bind: Option<BindGroup>,
     tonemap_bind: [BindGroup; 2],
@@ -312,6 +336,11 @@ impl Renderer {
             "lod",
             &format!("{bird_prelude}\n{}", include_str!("../shaders/lod.wgsl")),
         );
+        let falcon_module = shader(
+            device,
+            "falcon",
+            &format!("{bird_prelude}\n{}", include_str!("../shaders/falcon.wgsl")),
+        );
 
         let tonemap_source = include_str!("../shaders/tonemap.wgsl").to_string();
         let tonemap_module = shader(device, "tonemap", &tonemap_source);
@@ -380,6 +409,11 @@ impl Renderer {
                 storage_write(2, ShaderStages::COMPUTE),
                 storage_write(3, ShaderStages::COMPUTE),
             ],
+        });
+        // The falcon reads the scene and nothing else.
+        let falcon_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("render: falcon layout"),
+            entries: &[uniform_entry(0, ShaderStages::VERTEX_FRAGMENT)],
         });
         let tonemap_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("render: tonemap layout"),
@@ -478,6 +512,15 @@ impl Renderer {
             &coverage_module,
             "vs_bird",
             "fs_bird",
+            &[],
+        );
+        let falcon = bird_pipeline(
+            device,
+            "render: falcon",
+            &falcon_layout,
+            &falcon_module,
+            "vs_falcon",
+            "fs_falcon",
             &[],
         );
 
@@ -640,6 +683,14 @@ impl Renderer {
                 resource: scene_buffer.as_entire_binding(),
             }],
         });
+        let falcon_bind = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("render: falcon bind"),
+            layout: &falcon_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: scene_buffer.as_entire_binding(),
+            }],
+        });
         let (tonemap_bind, taa_bind) = history_binds(
             device,
             &tonemap_layout,
@@ -683,6 +734,7 @@ impl Renderer {
             mesh,
             impostor,
             coverage,
+            falcon,
             tonemap,
             taa,
             exposure_pipeline,
@@ -697,6 +749,7 @@ impl Renderer {
             lod_args,
             lod_birds: 0,
             sky_bind,
+            falcon_bind,
             bird_bind: None,
             lod_bind: None,
             tonemap_bind,
@@ -1081,6 +1134,41 @@ impl Renderer {
                 pass.set_pipeline(pipeline);
                 pass.draw_indirect(&self.lod_args, (level * ARGS_STRIDE) as u64);
             }
+        }
+
+        // The falcon, if one is hunting: drawn on top of the flock from the
+        // scene alone, into both targets so it counts toward the exposure.
+        if self.scene.falcon > 0.5 {
+            let mut pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("render: falcon"),
+                color_attachments: &[
+                    Some(RenderPassColorAttachment {
+                        view: &self.hdr_view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Load,
+                            store: StoreOp::Store,
+                        },
+                    }),
+                    Some(RenderPassColorAttachment {
+                        view: &self.optics_view,
+                        depth_slice: None,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Load,
+                            store: StoreOp::Store,
+                        },
+                    }),
+                ],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_pipeline(&self.falcon);
+            pass.set_bind_group(0, &self.falcon_bind, &[]);
+            pass.draw(0..6, 0..1);
         }
         if let Some(set) = &self.timestamps {
             encoder.write_timestamp(set, 2);
@@ -1518,7 +1606,7 @@ pub const LOD_WORKGROUP: u32 = 64;
 /// `tests/lod_constants.rs` checks. The app's `--lod-sweep` measures the
 /// transition these describe.
 pub const RHO_MESH: f32 = 6.0;
-pub const LOD_BAND: f32 = 1.0;
+pub const LOD_BAND: f32 = 2.0;
 
 /// Below this a bird is smaller than a pixel and the analytic splat draws it.
 pub const RHO_SPLAT: f32 = 1.5;

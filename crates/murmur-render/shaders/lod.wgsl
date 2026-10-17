@@ -9,9 +9,10 @@
 //
 // Two of the thresholds are *cross-fades*, not switches: a bird within `BAND`
 // pixels of a threshold is written to both lists, with optical-depth weights
-// that sum to one. Every level carries the same optical mass `a·ρ²`, so the sum
-// is the bird's darkness either way: only its shape changes as it crosses. The
-// diameters are chosen where the two shapes differ by less than a pixel.
+// that sum to one. A resolved bird's silhouette carries less total ink than a
+// dot of the same wingspan (it is thinner), so the fade spreads that difference
+// over the band rather than stepping at the threshold; `--lod-sweep` measures
+// it. The thresholds are chosen where the two shapes differ by about a pixel.
 //
 // The lists are the indirect draws' instance buffers: level `k` occupies
 // `lod_lists[k * birds .. (k + 1) * birds]` as `(bird index, weight bits)`
@@ -27,7 +28,7 @@
 /// half-width. Below this a bird is a few pixels and the mesh is not worth ten
 /// triangles.
 const RHO_MESH: f32 = 6.0;
-const BAND: f32 = 1.0;
+const BAND: f32 = 2.0;
 
 /// Below this a bird is smaller than a pixel and the analytic splat is both
 /// cheaper and more accurate than a silhouette.

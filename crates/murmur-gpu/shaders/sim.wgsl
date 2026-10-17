@@ -458,9 +458,22 @@ fn resolve(b_in: Bird, time: f32, r: f32, f_i: vec3<f32>, acc: Acc, cen: Cen) ->
     let r_rand = sqrt(max(1.0 - z_rand * z_rand, 0.0));
     force += vec3<f32>(r_rand * cos(theta), r_rand * sin(theta), z_rand) * P.w_xi;
 
-    // Flee and flash expansion (escape::force) are inert before phase 7: there
-    // is no falcon, so `falcon` is None and it contributes nothing. The copying
-    // rule below is likewise inert without an alarmed bird.
+    // Flee and flash expansion (escape::force). Inert without a falcon: the
+    // reference returns `Vec3::ZERO` when `falcon` is `None`.
+    if falcon.present != 0u {
+        let away = p - falcon.pos;
+        let dist = length(away);
+        if dist < P.r_threat {
+            let dir = away / max(dist, 1e-6);
+            force += dir * (P.w_flee * (1.0 - dist / P.r_threat));
+            if time < b.flash_until {
+                force += dir * P.w_flash;
+            }
+        }
+    }
+
+    // Copy a zigzag (escape.rs, the copying rule): a non-alarmed bird starts one
+    // when at least `zigzag_k` of its neighbours are in a copyable zigzag.
     var start_zigzag = 0.0;
     if b.alarmed == 0u
         && b.zigzag_active == 0u
@@ -497,9 +510,37 @@ fn resolve(b_in: Bird, time: f32, r: f32, f_i: vec3<f32>, acc: Acc, cen: Cen) ->
     return b;
 }
 
-// The decided bird, from the bounded neighbour walk.
-fn decide(i: u32, time: f32) -> Bird {
-    let b = src[i];
+// world.rs::step lines 331-363: the falcon alarms the birds within `R_THREAT`,
+// rolls them away from it and flash-expands the closest, fastest pass. Every
+// bird every step, whether or not it is due to decide.
+fn alarm(b_in: Bird, time: f32) -> Bird {
+    var b = b_in;
+    if falcon.present == 0u {
+        b.alarmed = 0u;
+        return b;
+    }
+    let dist = length(b.pos - falcon.pos);
+    if dist < P.r_threat {
+        let side = side_of(forward(b.vel));
+        let to_falcon = dot(falcon.pos - b.pos, side);
+        if b.zigzag_active == 0u && time >= b.cooldown_until {
+            b.zigzag_start = time;
+            b.zigzag_active = 1u;
+            b.zigzag_sign = select(1.0, -1.0, to_falcon > 0.0);
+        }
+        b.alarmed = 1u;
+        if dist < P.r_flash && falcon.speed > P.v_flash {
+            b.flash_until = time + P.flash_duration;
+        }
+    } else {
+        b.alarmed = 0u;
+    }
+    return b;
+}
+
+// The decided bird, from the bounded neighbour walk. `b` has already been
+// through `alarm`.
+fn decide(i: u32, b: Bird, time: f32) -> Bird {
     let f_i = forward(b.vel);
     let acc = gather(b.pos, b.radius, i, f_i, time);
     let cen = gather_centrality(b.pos, 2.0 * b.radius, i);
@@ -507,8 +548,7 @@ fn decide(i: u32, time: f32) -> Bird {
 }
 
 // The same decision from the brute-force walk (phase 3 acceptance test only).
-fn decide_bruteforce(i: u32, time: f32) -> Bird {
-    let b = src[i];
+fn decide_bruteforce(i: u32, b: Bird, time: f32) -> Bird {
     let f_i = forward(b.vel);
     let acc = gather_bruteforce(b.pos, b.radius, i, f_i, time);
     let cen = gather_bruteforce_centrality(b.pos, 2.0 * b.radius, i);
@@ -522,11 +562,11 @@ fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let time = clock.time;
-    if time >= src[i].next_decision {
-        dst[i] = decide(i, time);
-    } else {
-        dst[i] = src[i];
+    var b = alarm(src[i], time);
+    if time >= b.next_decision {
+        b = decide(i, b, time);
     }
+    dst[i] = b;
 }
 
 @compute @workgroup_size(256)
@@ -536,11 +576,11 @@ fn decide_bruteforce_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         return;
     }
     let time = clock.time;
-    if time >= src[i].next_decision {
-        dst[i] = decide_bruteforce(i, time);
-    } else {
-        dst[i] = src[i];
+    var b = alarm(src[i], time);
+    if time >= b.next_decision {
+        b = decide_bruteforce(i, b, time);
     }
+    dst[i] = b;
 }
 
 // --- world.rs::step (flight integration) -----------------------------------

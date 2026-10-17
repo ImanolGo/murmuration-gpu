@@ -22,11 +22,13 @@
 //! 15 m nearest-neighbour scan costs ~26 s per simulated second at 100,000
 //! birds.
 
+pub mod agitation;
 pub mod analyze;
 pub mod bench;
 pub mod bird;
 pub mod coherence;
 pub mod device;
+pub mod falcon;
 pub mod grid;
 pub mod params;
 pub mod parity;

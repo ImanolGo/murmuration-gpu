@@ -846,7 +846,9 @@ accumulation on and off, side by side. Over 30 frames the raw frame-to-frame
 change is **293.8 black px/frame**; with the accumulation it is **68.5** — **77 %
 removed**. The in-motion fly-past is close behind: **28866 → 7126**, **75 %
 removed**. So the accumulation removes three-quarters of the sub-pixel change
-whether or not the flock is moving.
+whether or not the flock is moving. (Phase 7 re-measured the fly-past after the
+mesh correction below: the accumulated frame-to-frame change is `12426 → 4823`
+black px, 61 % removed; the static figure is unchanged at 77 %.)
 
 **Frame time at 1M birds — reported.** All numbers are GPU timestamp queries
 (`renderer.frame_times_ms`), on a **GTX 1650 with Max-Q Design, NVIDIA driver
@@ -884,3 +886,130 @@ pass (`murmur-render`: 12 unit + `mesh_area` 3 + `lod_constants` 4 +
 - The impostor's sigmas, the mesh's ten triangles and the peak dihedral are the
   renderer's own shapes, fixed once and measured by `--lod-sweep`, not tuned per
   scene.
+
+## Phase 7 — falcon and agitation (2026-10-17)
+
+The falcon hunts, the flock flees and copies zigzags, and the agitation-wave
+experiment runs on both engines.
+
+### What was built
+
+- **The CPU oracle.** `murmur-ref::escape` gains `measure_agitation`,
+  `AgitationWave`, `spread` and `linfit`, ported from the terminal version's
+  `sim/escape.rs`. `crates/murmur-ref/tests/agitation.rs` pins it to the
+  terminal's own runs: `--agitation --birds 2000 --seed 42 --zigzag-k 2` reports
+  `speed 7.56 m/s, R2 0.952, 100 % reached, 22 % expansion` here, digit for digit
+  the same line the terminal prints.
+- **The GPU falcon.** `crates/murmur-gpu/src/falcon.rs` (the record and its
+  spawn) and `shaders/falcon.wgsl` (a one-workgroup reduction of the flock to its
+  centroid and extent, and a one-invocation `Falcon::update` mirror), dispatched
+  inside the step when a falcon is present. The alarm, the flee force and the
+  flash expansion live in `sim.wgsl`'s decide pass, on every bird every step.
+  `Sim` gains `spawn_falcon`, `steer_falcon` (mouse mode), `write_falcon` and
+  `falcon` (a small readback); `--falcon` runs only those two extra passes, so a
+  run without a falcon is byte-for-byte the phase-6 step.
+- **The GPU experiment.** `murmur-gpu::agitation::measure` runs the oracle's
+  seeding and fit over a GPU flock, reading the escape state back once per 5 ms
+  step (the experiment needs each bird's *first* zigzag start, which the shader
+  does not keep). The settle is batched.
+- **The renderer.** The falcon is drawn as the reference draws it
+  (`render/splat.rs`): `a = 1.6·atmosphere`, a `1 m` wingspan, the same
+  continuous unresolved/resolved footprint as a splat, so it cannot shimmer. Its
+  position rides in the `Scene`; the camera gains `cursor_to_plane` for the mouse.
+- **The app.** `--falcon`, `--agitation`, `--zigzag-k` (1–7), `--zoom`; the
+  window's `f` key spawns and moving the mouse steers, as the terminal does.
+
+### Acceptance — measured
+
+**Agitation propagation speed — met.** `--agitation` under the GPU and the CPU
+oracle, GTX 1650 Max-Q, driver 615.78.08, Vulkan, 2,000 birds, 4 s:
+
+| k | seed | CPU oracle | GPU | agreement |
+| --- | --- | --- | --- | --- |
+| 2 | 42 | 7.56 m/s | 7.52 | 1 % |
+| 2 | 1 | 6.85 | 6.80 | 1 % |
+| 2 | 7 | 6.81 | 7.10 | 4 % |
+| 1 | 42 | 15.15 | 14.66 | 3 % |
+| 3 | 42 | 4.01 | 3.97 | 1 % |
+
+The terminal version reports 6.8–7.6 m/s at `k = 2` and this bird count, so the
+GPU's `k = 2` runs are inside the reference range, and every run is inside the
+3–25 m/s band the terminal prints as its target. The GPU's R² is 0.9 or better
+and the wave reaches the whole flock, as the oracle's does. The two engines have
+different random streams (below), so this compares the *rule* and the resulting
+speed, not a trajectory.
+
+**A falcon attack — the alarm and the wave are met; the dark band's *visual*
+contrast is weak.** `crates/murmur-gpu/tests/falcon.rs` checks, on the GPU:
+
+- an autonomous falcon flies the full patrol → climb → stoop → retreat cycle
+  (all four states observed) and alarms birds (`peak alarmed 100 %`, `peak
+  zigzagging 93 %` over 30 s at 2,000 birds);
+- the alarm rule matches the CPU oracle **bird for bird** on a frozen flock:
+  `alarmed gpu 2000 / cpu 2000`, `flash gpu 874 / cpu 874`, and the roll direction
+  agrees on `2000/2000` alarmed birds;
+- the wave sweeps the flock over time — the zigzag share rises from 0 to ~41 %
+  and decays over about 3 s (`0 %…8 s:13 %, 10 s:41 %, 11 s:18 %, 12 s:0 %`).
+
+`docs/falcon-attack.mp4` records an attack (5,000 birds, seed 2, the lens fixed):
+the frame's mean brightness dips from `111` to `104` and recovers to `113` across
+the attack window — a real darkening of the flock. The recording shows the falcon
+as a dark speck and the flock thinning where it passes (the flash expansion).
+
+Honest caveat: the *band* is far more visible in the terminal version than here.
+The terminal draws a bird as a dot whose per-pixel optical depth is ~`0.6a`, so a
+roll changes a pixel's darkness directly. In this renderer a dense flock is
+optically thick (several birds per pixel), so the same roll changes pixels that
+are already near black; the contrast is much lower. It is measurable (the
+brightness dip above) and visible in the thin parts of the flock, but it is not
+the bold band the terminal shows. This is recorded as open, not fixed.
+
+### Phase 6 corrections this phase forced
+
+Driving the falcon surfaced a mistake in phase 6, and it is fixed here rather
+than papered over (`docs/model.md`, "Phase 6 correction found by phase 7"):
+
+- **The mesh's optical depth is the reference disc's peak, `2a/π`**, not the
+  mass-preserving `a/MEAN_AREA`. The old form made every mesh bird opaque
+  (`τ ≈ 12a`), which pinned the auto-exposure at its `EXPOSURE_MIN = 1.0` floor
+  and saturated the flock to black — hiding exactly the wing-exposure structure
+  the falcon's wave moves. With the disc peak the exposure behaves as the model's
+  rule intends (at 2,000 birds it settles near 5, not 1) and a mesh bird is as
+  dark per pixel as a dot bird of the same size.
+- **The mesh↔impostor cross-fade widened from `1 px` to `2 px`.** With the
+  correct per-pixel depth the ink difference between the levels is larger, and a
+  `1 px` band let the fade's worst per-step change reach `2.30×` the growth
+  control — a jump by the sweep's own criterion. At `2 px` it is `1.52×`
+  (`docs/lod-sweep.txt`), and the ink moves `2.01 → 0.53` black px over sixteen
+  steps.
+
+`docs/lod-sweep.txt`, `docs/still-2k-mesh.png`, `docs/still-20k-p6.png` and
+`docs/capture-20k.txt` are re-measured under the corrected code — the wider
+cross-fade band brings a `ρ ≥ 4 px` fringe of the 20,000-bird flock into the
+mesh level (a few per cent of the birds, counted in both lists). GPU run-to-run
+bit-reproducibility is out of scope (PLAN.md), and at 20,000 birds over 60 s
+chaos amplifies the last-bit differences the GPU's own sum order introduces, so
+the exact fringe varies from run to run; the numbers quoted are one run.
+`docs/still-1m-p6.png` is re-rendered under the corrected code for the phase-7
+frame time (its `mesh` count is ~270 of a million).
+
+### Frame time re-measured
+
+GPU timestamp queries, GTX 1650 Max-Q, driver 615.78.08, Vulkan, `1280×720`, one
+run each, the GPU idle:
+
+- **1,000,000 birds: `11.02 ms/frame`** (`lod 0.43`, `birds 10.03`,
+  `exposure 0.18`, `taa 0.32`, `tonemap 0.06`). The still that reached it cost
+  `3397 s` of simulation. Phase 6 measured `12.19 ms` on the same setup; the
+  difference is run-to-run variation, not the mesh correction (at 1M only ~270
+  birds are meshes).
+- **20,000 birds: `0.87 ms/frame`** (`birds 0.46`), mostly impostor.
+- **2,000 birds: `0.49 ms/frame`** (`birds 0.12`), all mesh.
+
+### Open
+
+- The dark band's contrast in a dense flock (above).
+- Temporal AA still has no motion vectors (phase 6).
+- The camera and exposure readbacks still stall the pipeline each frame; the
+  agitation measurement adds one readback per 5 ms step, which is fine for an
+  experiment and not for a run (phase 9).

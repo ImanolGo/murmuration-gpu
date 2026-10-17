@@ -16,7 +16,7 @@ use murmur_ref::state::Snapshot;
 /// Per-run parameters, mirroring the reference constants plus the clock and the
 /// spatial grid's shape.
 ///
-/// 52 `f32`/`u32` scalars = 208 bytes, a multiple of 16, so the WGSL struct
+/// 56 `f32`/`u32` scalars = 224 bytes, a multiple of 16, so the WGSL struct
 /// matches field for field.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Pod, Zeroable)]
@@ -87,8 +87,18 @@ pub struct Params {
     /// neighbour set is fixed by the exact distance check, so the two never
     /// disagree about which birds interact (see [`crate::grid::CELL`]).
     pub inv_cell: f32,
-    pub pad1: f32,
-    pub pad2: f32,
+    /// Falcon cruise speed (falcon.rs `FALCON_CRUISE`).
+    pub falcon_cruise: f32,
+    /// Falcon climb speed (`FALCON_CLIMB`).
+    pub falcon_climb: f32,
+    /// Falcon stoop speed (`FALCON_STOOP`).
+    pub falcon_stoop: f32,
+    /// Height above the flock the falcon climbs to (`FALCON_ATTACK_HEIGHT`).
+    pub falcon_attack_height: f32,
+    /// Shortest autonomous attack interval (`FALCON_ATTACK_MIN`).
+    pub falcon_attack_min: f32,
+    /// Longest autonomous attack interval (`FALCON_ATTACK_MAX`).
+    pub falcon_attack_max: f32,
     pub pad3: u32,
 }
 
@@ -169,8 +179,12 @@ impl Params {
             buckets: crate::grid::buckets_for(n),
 
             inv_cell: 1.0 / crate::grid::CELL,
-            pad1: 0.0,
-            pad2: 0.0,
+            falcon_cruise: p::FALCON_CRUISE,
+            falcon_climb: p::FALCON_CLIMB,
+            falcon_stoop: p::FALCON_STOOP,
+            falcon_attack_height: p::FALCON_ATTACK_HEIGHT,
+            falcon_attack_min: p::FALCON_ATTACK_MIN,
+            falcon_attack_max: p::FALCON_ATTACK_MAX,
             pad3: 0,
         }
     }

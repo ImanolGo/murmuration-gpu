@@ -7,19 +7,20 @@
 // the dihedral amplitude is this renderer's own, because the reference draws
 // dots and has no wings to rotate (`docs/model.md`).
 //
-// The bird deposits the same optical mass as a splat, `a·ρ²`, but through its
-// silhouette: a constant optical depth `a / MEAN_AREA` per fragment, where
-// MEAN_AREA is the mesh's mean projected area in units of ρ². Seen edge-on a
-// bird carries less mass than seen from above, which is what an optically thin
-// bird does; on average over angles it matches the splat, so switching levels
-// does not change how dark the bird is.
+// The bird deposits the model's *per-pixel* optical depth: the reference
+// spreads the mass `a·ρ²` over a disc of diameter `ρ`, whose peak is
+// `2a/π` (`mesh::DISC_PEAK`). Per fragment the silhouette deposits that same
+// peak, so a mesh bird is as dark per pixel as a dot bird of the same size and
+// the auto-exposure rule sees the optical depth it expects. Its *total* mass is
+// then below a disc's, because a silhouette is thinner than a disc; the
+// cross-fade carries that difference and `docs/model.md` records it.
 
 @group(0) @binding(1) var<storage, read> birds: array<Bird>;
 @group(0) @binding(2) var<storage, read> lod_lists: array<vec2<u32>>;
 
-/// The mesh's mean projected silhouette area, in units of the projected
-/// wingspan squared (`mesh::mean_projected_area`). Measured, not tuned.
-const MEAN_AREA: f32 = 0.0851;
+/// The reference disc's peak optical depth per unit `a` (`mesh::DISC_PEAK`),
+/// checked by `tests/mesh_area.rs`.
+const DISC_PEAK: f32 = 0.6366198;
 
 struct MeshOut {
     @builtin(position) clip: vec4<f32>,
@@ -69,7 +70,7 @@ fn vs_mesh(
         0.0,
         1.0,
     );
-    out.raw = s.a * weight / MEAN_AREA;
+    out.raw = s.a * weight * DISC_PEAK;
     return out;
 }
 

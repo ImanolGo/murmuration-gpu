@@ -323,17 +323,23 @@ level draws a bird does not change how much light it absorbs in total.
   and a tail. The peak dihedral `FLAP_DIHEDRAL = 0.7 rad` is this renderer's own
   constant (the reference has no wings to rotate to find it); the phase and rate
   are the model's. `docs/progress.md` (phase 6) records the geometry.
-- **The mesh deposits a flat optical depth `a / MEAN_AREA`.** `MEAN_AREA =
-  0.0851` is the mesh's mean projected silhouette area in units of `ρ²`,
-  *measured* from the vertex data over viewing angles and wingbeat phases by
-  `mesh::mean_projected_area()`, and pinned against the shader's constant by
-  `tests/mesh_area.rs`. Dividing by it makes the mesh mass-preserving on
-  average, exactly like the splat.
+- **The mesh deposits a flat optical depth per fragment** (see the phase 7
+  correction below: it is the reference disc's peak `2a/π`, not the mass
+  `a·MEAN_AREA` normalisation phase 6 first shipped).
 - **The impostor is a mass-preserving Gaussian mixture.** A body and two wing
   lobes as normalised Gaussians, divided by the sum of their own integrals, so
   its total optical depth is `a·ρ²` by construction. This is new: the reference
   has no shape between a dot and a resolved bird. Its sigmas are the renderer's
-  own (`impostor.wgsl`).
+  own (`impostor.wgsl`). Its *peak* per-pixel depth is `~1.55a`, higher than the
+  reference disc's `2a/π ≈ 0.64a`, because the same mass is packed into a
+  narrower, bird-shaped footprint rather than a broad disc — a deliberate
+  trade-off of exact per-pixel depth for shape. A consequence, recorded and not
+  hidden: an impostor flock is dense enough that its 80th-percentile optical
+  depth exceeds `TARGET_TAU`, so the auto-exposure rests at its `EXPOSURE_MIN`
+  floor at 20,000 birds and above. That is the same floor the reference reaches
+  at density (its dot model floors there too), but it arrives at a lower bird
+  count here. The mesh and the splat are at the model's per-pixel scale; the
+  impostor is not.
 - **The LOD thresholds are renderer constants.** Mesh `≥ 6 px` with a `1 px`
   cross-fade band `[5, 7]`, impostor `[1.5, 6)`, splat `< 1.5`. The mesh and
   impostor thresholds are a *cross-fade*: a bird inside the band is written to
@@ -341,20 +347,16 @@ level draws a bird does not change how much light it absorbs in total.
   so only the bird's *shape* changes as it crosses. The thresholds are chosen
   where the two shapes differ by less than a pixel; `--lod-sweep` measures the
   result (`docs/progress.md`).
-- **Mass is preserved; ink is not, and that is the documented adaptation.** The
-  splat spreads `a·ρ²` over a disc of diameter `ρ` (area `π/4·ρ² ≈ 0.785ρ²`);
-  the mesh concentrates the same mass through a silhouette of mean area
-  `0.0851ρ²`. At the exposure a dense flock settles on, the splat is optically
-  thin (its peak depth is `2a/π`, a fraction of a unit) while the mesh is
-  saturated (`a/0.0851 ≈ 12a`). So at equal mass a resolved bird is much darker
-  per pixel but covers far less area, and its **total ink is lower** — an
-  optically thin dot model darkens a wide patch, an opaque bird does not. This
-  is the physics the phase-5 dot model cannot express, and it is why the mesh is
-  worth ten triangles. `--lod-sweep` measures the size of it: across the `[5,7]`
-  px cross-fade the ink moves `3.20 → 2.30` black pixels (`1.39×`) spread over
-  eight `0.25 px` steps — a gradual thinning, not a step. The starling mesh is
-  the *correct* shape at those sizes; the reference's disc is a sub-pixel
-  approximation that over-inks once the bird resolves.
+- **A bird that resolves gets thinner: ink is not preserved.** The splat spreads
+  `a·ρ²` over a disc of diameter `ρ` (area `π/4·ρ² ≈ 0.785ρ²`); the mesh
+  concentrates it through a silhouette of mean area `0.0851ρ²`. At the same
+  per-pixel optical depth (the phase 7 correction below) the mesh therefore
+  covers far less area, and its **total ink is lower** — an optically thin dot
+  model darkens a wide patch, a bird's silhouette does not. This is the physics
+  the dot model cannot express, and it is why the mesh is worth ten triangles.
+  `--lod-sweep` measures the size of it: across the `[4,8]` px cross-fade the
+  ink moves `2.01 → 0.53` black pixels (`3.78×`) spread over sixteen `0.25 px`
+  steps — a gradual thinning, not a step.
 - **No depth buffer, and back-face culling is off.** The scene is optically thin
   and the pass composites in call order: a depth buffer would sort a single
   instance's own triangles for no gain, and culling back faces would hide the
@@ -380,6 +382,71 @@ impostor or the mesh, so the phase-5 still's dense black core is now a mass of
 impostor dashes and mesh silhouettes. At 20,000 birds the two stills are
 near-identical to the eye (`docs/still-20k.png` vs `docs/still-20k-p6.png`),
 which is the continuity this phase is for.
+
+### Phase 7 adaptations
+
+Phase 7 adds the falcon and the agitation wave (PLAN.md "Phase 7"). The
+mechanics are the model's: `murmur-ref` carries `escape.rs` (threat detection,
+the flee and flash-expansion forces, the zigzag manoeuvre and its copying rule)
+and `falcon.rs` (the autonomous hunter), both mirrored from the terminal
+version, and the GPU now runs them per step.
+
+- **The falcon lives in the GPU's step.** `world.rs::step` updates the falcon,
+  then alarms the birds it is near, then decides and integrates; the GPU does the
+  same with two small passes (`shaders/falcon.wgsl`): one workgroup reduces the
+  flock to its centroid and extent (which the falcon steers by, exactly as
+  `world.rs` computes them from `self.position` every step), and one invocation
+  advances the falcon. The alarm and the flee/flash force run inside the decide
+  pass (`sim.wgsl`), on every bird every step, as in the reference.
+- **The falcon's random stream is the one adaptation.** `Falcon::new` and the
+  retreat-to-cruise transition draw from a ChaCha8 stream that cannot run in
+  WGSL. The GPU draws from the same counter-based PCG as the birds, seeded from
+  the run's seed, and both sides advance it with the same step, so
+  `Falcon::spawn` and the shader agree on the first draw. The attack times are
+  therefore a different draw from the terminal's, but from the same distribution
+  (5–20 s), and the parity test compares the alarm on a fixed falcon instead.
+- **The alarm reads the previous step's neighbour state, and it does not
+  matter.** `world.rs` alarms the flock *before* rebuilding the grid and deciding,
+  so a decision sees neighbours alarmed in the same step. The GPU alarms inside
+  the decide pass and the neighbour walk reads `src`, the step's input. A
+  neighbour's zigzag started this step is therefore not visible to the copy rule
+  until the next step — but the rule requires a zigzag at least `DU = 0.05 s`
+  old (the model's own guard against the wave hopping a neighbour per step), so
+  a new start is *never* copyable anyway. The copyable set is identical.
+- **`--agitation` runs on both engines.** `murmur-ref::escape::measure_agitation`
+  is a faithful port of the terminal's experiment, and
+  `murmur-gpu::agitation::measure` runs the same seeding and the same fit over a
+  GPU flock (a per-step readback, because the experiment needs each bird's first
+  zigzag start). The two agree to within a few per cent (below), and the GPU's
+  speed is inside the 3–25 m/s the terminal reports at the same bird count.
+
+### Phase 6 correction found by phase 7: the mesh's optical depth
+
+Driving the falcon exposed a phase-6 mistake. The mesh deposited the model's
+optical *mass* `a·ρ²` through its silhouette (`a / MEAN_AREA` per fragment),
+which makes a mesh bird fully opaque: its per-fragment optical depth is ~12× the
+reference's disc peak. The reference's auto-exposure drives the 80th percentile
+of the optical depth to `TARGET_TAU = 1.204` and clamps the exposure at
+`EXPOSURE_MIN = 1.0`; with a mesh flock that percentile is far above the clamp,
+so the exposure pinned at its floor and every mesh bird saturated to black. Two
+consequences: the flock's wing-exposure structure (which is what a falcon attack
+makes visible) was lost, and the model's own exposure rule could not do its job.
+
+The mesh now deposits the **reference disc's peak optical depth**, `2a/π`
+(`mesh::DISC_PEAK`), per fragment — the per-pixel convention the model's
+exposure rule and darkness assume. A mesh bird is then exactly as dark per pixel
+as a dot bird of the same size, and the exposure behaves as it does for a dot
+flock (at 2,000 birds the exposure settles near 5, as the rule asks, instead of
+pinning at 1). Its *total* ink is lower, because a silhouette is thinner than a
+disc of the same wingspan — that difference is what the mesh↔impostor
+cross-fade carries, and it is measured: `--lod-sweep` moves the ink `2.01 →
+0.53` black pixels across the band, over sixteen `0.25 px` steps.
+
+The cross-fade was widened from `1 px` to `2 px` for the same reason: with the
+correct per-pixel depth the ink difference between the levels is larger, and the
+narrower band let the fade's per-step change reach `2.3×` the growth control.
+At `2 px` it is `1.52×` (`docs/lod-sweep.txt`), back under the stated jump
+threshold.
 
 ## Known gaps (reported, not hidden)
 

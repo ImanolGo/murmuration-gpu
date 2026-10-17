@@ -1,35 +1,41 @@
-//! The mesh's optical-mass constant is a *measurement*, not a taste.
+//! The mesh's geometry and its optical-depth constant.
 //!
-//! The coverage pass gives every bird a disc of optical mass `a·ρ²`. The mesh
-//! gives it a silhouette at a constant optical depth per fragment, so its
-//! fragment shader divides by the mesh's mean projected area `ρ²`. That number
-//! is computed from the vertex data (over viewing angles and wingbeat phases)
-//! and compared here against the constant the shader actually uses, so the two
-//! cannot drift apart.
+//! The mesh deposits the model's *per-pixel* optical depth, `2a/π` — the
+//! reference disc's peak — so a mesh bird is as dark per pixel as a dot bird of
+//! the same size and the auto-exposure rule sees the optical depth it expects.
+//! That constant is compared here against the shader's, so the two cannot drift.
+//! The mean projected area is also measured: it is how much thinner than a disc
+//! the silhouette is, which is why a mesh bird's *total* ink is lower.
 
 use murmur_render::mesh;
 
-/// The `const MEAN_AREA: f32 = …;` out of the mesh shader.
-fn shader_constant() -> f32 {
+/// The `const DISC_PEAK: f32 = …;` out of the mesh shader.
+fn shader_constant(name: &str) -> f32 {
     let source = include_str!("../shaders/bird_mesh.wgsl");
     let line = source
         .lines()
-        .find(|l| l.trim_start().starts_with("const MEAN_AREA"))
-        .expect("bird_mesh.wgsl declares MEAN_AREA");
+        .find(|l| l.trim_start().starts_with(&format!("const {name}:")))
+        .unwrap_or_else(|| panic!("bird_mesh.wgsl declares {name}"));
     line.split('=')
         .nth(1)
-        .and_then(|v| v.trim().trim_end_matches(';').parse::<f32>().ok())
-        .unwrap_or_else(|| panic!("cannot parse MEAN_AREA out of {line:?}"))
+        .expect("the const has a value")
+        .trim()
+        .trim_end_matches(';')
+        .trim_end_matches('f')
+        .parse::<f32>()
+        .unwrap_or_else(|_| panic!("cannot parse {name} out of {line:?}"))
 }
 
 #[test]
-fn shader_mass_constant_is_the_measured_mean_projected_area() {
-    let measured = mesh::mean_projected_area();
-    let shader = shader_constant();
+fn the_shader_deposits_the_reference_disc_peak() {
+    let shader = shader_constant("DISC_PEAK");
     assert!(
-        (measured - shader).abs() < 0.01,
-        "bird_mesh.wgsl says MEAN_AREA = {shader}, the geometry measures {measured}"
+        (shader - mesh::DISC_PEAK).abs() < 1e-5,
+        "bird_mesh.wgsl says DISC_PEAK = {shader}, the model's disc peak is {}",
+        mesh::DISC_PEAK
     );
+    // `mass / (2 pi sigma^2)` with `mass = a rho^2` and `sigma = rho / 2`.
+    assert!((mesh::DISC_PEAK - 2.0 / std::f32::consts::PI).abs() < 1e-6);
 }
 
 #[test]
@@ -39,21 +45,15 @@ fn a_vertex_is_a_position_and_a_wing_selector() {
     assert_eq!(mesh::TRIANGLES, 10);
 }
 
-/// The mesh and the coverage splat must carry the same optical mass on average
-/// (`a·ρ²` each): a bird that changes level must not change how much light it
-/// absorbs *in total*. The splat spreads that mass over a disc of diameter `ρ`;
-/// the mesh concentrates it through a silhouette, so at equal mass the mesh is
-/// much darker per pixel — that difference in *shape* is the phase-6
-/// cross-fade's reason to exist and is measured by `--lod-sweep`
-/// (`docs/progress.md`, phase 6), not hidden here.
+/// The mesh is a *thin* bird: its mean projected area is a fraction of the disc
+/// of the same wingspan, which is why its total ink is lower at the same
+/// per-pixel optical depth. Pinned so the difference stays a measured number.
 #[test]
-fn the_mesh_and_a_splat_carry_the_same_mass_on_average() {
-    let mesh_mass = mesh::mean_projected_area(); // units of ρ², mass = a × this
-    let splat_mass = std::f32::consts::PI / 4.0; // a disc of diameter ρ
-    // The mesh is thinner than a disc of the same wingspan: the wings are planes
-    // seen from varying angles, not a filled circle.
+fn the_mesh_is_thinner_than_a_disc_of_its_wingspan() {
+    let mesh_area = mesh::mean_projected_area();
+    let disc_area = std::f32::consts::PI / 4.0; // a disc of diameter rho
     assert!(
-        mesh_mass > 0.1 * splat_mass && mesh_mass < 2.0 * splat_mass,
-        "mesh {mesh_mass} vs splat {splat_mass}"
+        mesh_area > 0.02 && mesh_area < 0.3 * disc_area,
+        "mesh mean area {mesh_area} vs the disc's {disc_area}"
     );
 }

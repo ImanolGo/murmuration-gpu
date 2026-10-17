@@ -408,7 +408,8 @@ modes; the deviations from the reference renderer are in `docs/model.md`
 - **No obvious shimmer.** `docs/shimmer.mp4` is a frozen, four-times-wider (so
   sub-pixel) flock with the temporal accumulation on and off: the raw
   frame-to-frame change is `293.8` black px/frame, accumulated `68.5` — **77 %
-  removed**. The moving fly-past is `75 %`. `--still` also converges the
+  removed**. The moving fly-past is `75 %` (phase 7 re-measured it at 61 % after the mesh
+  correction below; the static figure is unchanged). `--still` also converges the
   accumulation over 24 jittered samples, which is why `docs/still-2k-mesh.png`
   is clean.
 - **Frame time at 1M.** GPU timestamps (`renderer.frame_times_ms`), GTX 1650
@@ -417,6 +418,17 @@ modes; the deviations from the reference renderer are in `docs/model.md`
   settled 1M flock is sub-pixel almost everywhere). 20,000 birds: `0.84 ms`;
   2,000 birds (all mesh): `0.47 ms`. The still that reached the 1M frame cost
   `3484 s` of simulation (the phase-5 cost), not a render cost.
+
+**Update (2026-10-17):** phase 7 found that the mesh's optical depth was ~12×
+the reference disc's peak, which pinned the auto-exposure at its floor and
+saturated the flock. The mesh now deposits the disc peak `2a/π` and the
+cross-fade is `2 px` wide, so the cross-fade's worst step is `1.52×` the growth
+control (still under the `2×` jump threshold) and the ink moves `2.01 → 0.53`
+black px over sixteen steps (`docs/model.md`, "Phase 6 correction found by phase
+7"). `docs/lod-sweep.txt`, `docs/still-2k-mesh.png`, `docs/still-20k-p6.png` and
+`docs/capture-20k.txt` are re-measured; the wider band brings a `ρ ≥ 4 px` fringe
+of the 20k flock into the mesh level. GPU run-to-run bit-reproducibility is out
+of scope (below), so the exact fringe varies between runs.
 
 ## Phase 7 — Falcon and agitation
 
@@ -429,6 +441,36 @@ modes; the deviations from the reference renderer are in `docs/model.md`
 **Accept:** a falcon attack produces visible dark waves; agitation
 propagation speed is within the range reported by the reference at the same
 bird count.
+
+**Met (2026-10-17), with one honest caveat.** Phase 7 adds the falcon
+(`crates/murmur-gpu/src/falcon.rs`, `shaders/falcon.wgsl`, the alarm and flee in
+`sim.wgsl`), the CPU agitation oracle (`murmur-ref::escape::measure_agitation`)
+and the GPU experiment (`murmur-gpu::agitation`), the falcon's footprint in
+`crates/murmur-render`, and the app's `--falcon`, `--agitation`, `--zigzag-k`,
+`--zoom` and window mouse steering. Measurements are in `docs/progress.md`
+(phase 7); the deviations are in `docs/model.md` ("Phase 7 adaptations").
+
+- **Agitation speed.** `--agitation` at 2,000 birds: the GPU and the CPU oracle
+  agree to 1–4 % (`k=2`: 7.52 / 6.80 / 7.10 m/s for seeds 42 / 1 / 7 against the
+  oracle's 7.56 / 6.85 / 6.81; `k=1`: 14.66 vs 15.15; `k=3`: 3.97 vs 4.01). The
+  terminal version reports 6.8–7.6 m/s at this count and `k=2`, so the GPU is
+  inside that range, and every run is inside the 3–25 m/s the terminal prints.
+- **A falcon attack.** The attack is real and measured: the alarm matches the
+  oracle bird for bird (2000/2000 alarmed, 874/874 flash-expanded, the roll
+  direction agreeing 2000/2000), the falcon flies its full patrol → climb →
+  stoop → retreat cycle, the zigzag share sweeps the flock (0 → 41 % → 0 over
+  ~3 s), and `docs/falcon-attack.mp4` records a 5,000-bird attack whose frame
+  brightness dips ~6 % and recovers. **Caveat:** the *dark band* is much less
+  visible here than in the terminal version, because a dense flock is optically
+  thick and the roll only changes near-black pixels; the wave is measurable and
+  visible in the flock's thin parts, and the flash expansion is clearly visible,
+  but it is not the bold band the terminal shows. Recorded as open rather than
+  claimed.
+- **A phase 6 correction.** Driving the falcon showed the mesh's optical depth
+  was ~12× the reference disc's peak, pinning the auto-exposure at its floor and
+  saturating the flock. The mesh now deposits `2a/π` (the disc peak) and the
+  cross-fade widened to `2 px`, so the exposure behaves as the model's rule
+  intends and the wing-exposure structure survives (`docs/model.md`).
 
 ## Phase 8 — The evening
 

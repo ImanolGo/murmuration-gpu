@@ -8,10 +8,11 @@
 use std::mem::{offset_of, size_of};
 
 use murmur_gpu::bird::Bird;
+use murmur_gpu::falcon::Falcon;
 use murmur_gpu::params::Params;
 
 /// The shader every GPU struct is checked against: `common.wgsl` carries
-/// `Params`, `bird.wgsl` carries `Bird`.
+/// `Params` and `Falcon`, `bird.wgsl` carries `Bird`.
 const SHADER: &str = concat!(
     include_str!("../shaders/common.wgsl"),
     "\n",
@@ -59,7 +60,7 @@ macro_rules! check_struct {
 
 #[test]
 fn params_matches_wgsl() {
-    assert_eq!(size_of::<Params>(), 208);
+    assert_eq!(size_of::<Params>(), 224);
     check_struct!(
         Params,
         "Params",
@@ -113,9 +114,13 @@ fn params_matches_wgsl() {
             (seed, 184),
             (buckets, 188),
             (inv_cell, 192),
-            (pad1, 196),
-            (pad2, 200),
-            (pad3, 204),
+            (falcon_cruise, 196),
+            (falcon_climb, 200),
+            (falcon_stoop, 204),
+            (falcon_attack_height, 208),
+            (falcon_attack_min, 212),
+            (falcon_attack_max, 216),
+            (pad3, 220),
         ]
     );
 }
@@ -151,6 +156,31 @@ fn bird_matches_wgsl() {
             (flash_until, 100),
             (pad0, 104),
             (pad1, 108),
+        ]
+    );
+}
+
+#[test]
+fn falcon_matches_wgsl() {
+    assert_eq!(size_of::<Falcon>(), 96);
+    check_struct!(
+        Falcon,
+        "Falcon",
+        [
+            (pos, 0),
+            (speed, 12),
+            (vel, 16),
+            (mode, 28),
+            (aim, 32),
+            (state, 44),
+            (dive, 48),
+            (until, 60),
+            (centroid, 64),
+            (rng, 76),
+            (extent, 80),
+            (present, 84),
+            (pad0, 88),
+            (pad1, 92),
         ]
     );
 }

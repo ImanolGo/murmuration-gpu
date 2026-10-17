@@ -800,6 +800,7 @@ dependencies = [
  "bytemuck",
  "glam",
  "murmur-gpu",
+ "murmur-ref",
  "murmur-render",
  "pollster",
  "wgpu",

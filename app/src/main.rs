@@ -39,7 +39,7 @@ use glam::Vec3;
 use murmur_gpu::bird::Bird;
 use murmur_gpu::device::{self, DeviceError, Gpu};
 use murmur_gpu::sim::Sim;
-use murmur_gpu::{FLAP_AMPLITUDE, Turning, World, analyze, bench, coherence, parity};
+use murmur_gpu::{FLAP_AMPLITUDE, Turning, World, agitation, analyze, bench, coherence, parity};
 use murmur_render::camera::{Camera, FlockView};
 use murmur_render::mesh::WINGSPAN;
 use murmur_render::png;
@@ -77,8 +77,16 @@ struct Args {
     /// Sweep one bird across every LOD threshold and print the transition
     /// measurement instead of opening the window.
     lod_sweep: bool,
+    /// Run the agitation-wave experiment headless and exit.
+    agitation: bool,
+    /// A falcon hunts from the start.
+    falcon: bool,
+    /// Copying threshold k for the zigzag wave (1–7).
+    zigzag_k: u32,
     /// Frames in a `--capture` sequence.
     frames: u32,
+    /// How far the `--capture` lens zooms in over the recording (1.0 = fixed).
+    zoom: f32,
     /// Bank model the shader runs (base or inertial).
     turning: Turning,
     /// Number of birds.
@@ -106,7 +114,11 @@ impl Default for Args {
             still: None,
             capture: None,
             lod_sweep: false,
+            agitation: false,
+            falcon: false,
+            zigzag_k: murmur_ref::params::ZIGZAG_K,
             frames: 120,
+            zoom: CAPTURE_ZOOM,
             turning: Turning::Base,
             birds: 2000,
             birds_given: false,
@@ -135,7 +147,16 @@ fn parse_args() -> Result<Args, String> {
             "--still" => args.still = Some(value(&mut it, "--still")?),
             "--capture" => args.capture = Some(value(&mut it, "--capture")?),
             "--lod-sweep" => args.lod_sweep = true,
+            "--agitation" => args.agitation = true,
+            "--falcon" => args.falcon = true,
+            "--zigzag-k" => {
+                args.zigzag_k = value(&mut it, "--zigzag-k")?.parse().map_err(err)?;
+                if !(1..=7).contains(&args.zigzag_k) {
+                    return Err(format!("--zigzag-k: {} is outside 1-7", args.zigzag_k));
+                }
+            }
             "--frames" => args.frames = value(&mut it, "--frames")?.parse().map_err(err)?,
+            "--zoom" => args.zoom = value(&mut it, "--zoom")?.parse().map_err(err)?,
             "--turning" => {
                 let value = value(&mut it, "--turning")?;
                 args.turning = match value.as_str() {
@@ -156,9 +177,9 @@ fn parse_args() -> Result<Args, String> {
                 println!(
                     "murmuration-gpu [--parity | --bench | --analyze SECONDS | \
                      --coherence SECONDS | --still PATH | --capture DIR | \
-                     --lod-sweep] [--birds N] [--seed S] [--seconds T] \
-                     [--seeds K] [--steps N] [--frames N] [--extended] \
-                     [--turning base|inertial]"
+                     --lod-sweep | --agitation] [--birds N] [--seed S] [--seconds T] \
+                     [--seeds K] [--steps N] [--frames N] [--zoom F] [--falcon] \
+                     [--zigzag-k K] [--extended] [--turning base|inertial]"
                 );
                 std::process::exit(0);
             }
@@ -419,6 +440,9 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
     world.turning = args.turning;
     let evening = world.evening();
     let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+    if args.falcon {
+        sim.spawn_falcon(&gpu, args.seed, world.z0);
+    }
     sim.advance_seconds(&gpu, seconds)?;
 
     let flock = World::restore(&sim.snapshot(&gpu));
@@ -439,6 +463,13 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
         FrameRenderer::new(&gpu, WIDTH, HEIGHT, wgpu::TextureFormat::Rgba8UnormSrgb)?;
     renderer.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
     let target = renderer.create_target(&gpu, WIDTH, HEIGHT);
+    let falcon = if args.falcon {
+        let f = sim.falcon(&gpu)?.position();
+        println!("# falcon at ({:.0}, {:.0}, {:.0})", f.x, f.y, f.z);
+        Some(f)
+    } else {
+        None
+    };
 
     let mut scene = Scene::from_camera(
         &camera,
@@ -448,7 +479,8 @@ fn run_still(args: &Args, path: &str, seconds: f32) -> Result<(), Box<dyn Error>
         renderer.exposure(),
         FLAP_AMPLITUDE,
         sim.time(),
-    );
+    )
+    .with_falcon(falcon);
     // The first frame fixes the exposure from the flock's 80th-percentile
     // optical depth; the rest let it settle, and let the temporal accumulation
     // average the jittered samples of the frozen scene.
@@ -689,9 +721,10 @@ fn run_capture(args: &Args, dir: &str, seconds: f32) -> Result<(), Box<dyn Error
     );
     println!(
         "# the moving flock steps six integration steps (0.03 s) per frame, played back at \
-         30 fps; the lens zooms 1.00 -> {CAPTURE_ZOOM:.2}, so every bird grows {:.1}x and \
+         30 fps; the lens zooms 1.00 -> {:.2}, so every bird grows {:.1}x and \
          crosses every LOD threshold in view",
-        1.0 / CAPTURE_ZOOM
+        args.zoom,
+        1.0 / args.zoom
     );
 
     let started = Instant::now();
@@ -775,6 +808,9 @@ fn capture_pass(
     world.turning = args.turning;
     let evening = world.evening();
     let mut sim = Sim::from_snapshot(gpu, &world.snapshot());
+    if args.falcon {
+        sim.spawn_falcon(gpu, args.seed, world.z0);
+    }
     sim.advance_seconds(gpu, seconds)?;
 
     let flock = World::restore(&sim.snapshot(gpu));
@@ -855,13 +891,18 @@ fn capture_pass(
                 renderer.exposure(),
                 FLAP_AMPLITUDE,
                 sim.time(),
-            );
+            )
+            .with_falcon(if sim.falcon_active() {
+                Some(sim.falcon(gpu)?.position())
+            } else {
+                None
+            });
             let t = if frames > 1 {
                 frame as f32 / (frames - 1) as f32
             } else {
                 0.0
             };
-            scene.fov *= 1.0 - (1.0 - CAPTURE_ZOOM) * t;
+            scene.fov *= 1.0 - (1.0 - args.zoom) * t;
         }
         renderer.set_scene(gpu, scene);
         renderer.set_history_weight(if pass.taa { None } else { Some(1.0) });
@@ -1161,6 +1202,65 @@ fn worst_step(rows: &[SweepRow], lo: f32, hi: f32) -> Step {
     worst
 }
 
+/// The agitation-wave experiment (PLAN.md phase 7): how fast a zigzag copies
+/// through the flock.
+///
+/// Runs the same experiment on the CPU oracle and on the GPU, seeding a patch of
+/// zigzags on one side of a settled flock and fitting the wave front's arrival
+/// time against distance. The sibling terminal version reports 6.8–7.6 m/s at
+/// 2,000 birds with `k = 2`; both lines are printed so the GPU's speed can be
+/// read against that range rather than against itself.
+fn run_agitation(args: &Args) -> Result<(), Box<dyn Error>> {
+    let started = Instant::now();
+    let gpu = open()?;
+    let info = gpu.info();
+    println!(
+        "# murmuration-gpu --agitation birds={} seed={} k={}",
+        args.birds, args.seed, args.zigzag_k
+    );
+    println!(
+        "# adapter \"{}\" on {:?} ({:?}), driver \"{}\" {}",
+        info.name, info.backend, info.device_type, info.driver, info.driver_info
+    );
+
+    // The CPU oracle mirrors the terminal's run (same seeding, same fit).
+    let mut world = World::new(args.birds, args.seed);
+    world.zigzag_k = args.zigzag_k;
+    let cpu = murmur_ref::escape::measure_agitation(&mut world, 4.0);
+    println!("# cpu {}", agitation_line(&cpu));
+    // The GPU runs the same experiment from its own settled state.
+    let mut world = World::new(args.birds, args.seed);
+    world.zigzag_k = args.zigzag_k;
+    let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+    let gpu_wave = agitation::measure(&gpu, &mut sim, 4.0)?;
+    println!("# gpu {}", agitation_line(&gpu_wave));
+
+    let in_range = (3.0..=25.0).contains(&gpu_wave.speed);
+    let tracks = (gpu_wave.speed - cpu.speed).abs() / cpu.speed.max(1e-6);
+    println!(
+        "# gpu speed {:.2} m/s is {} the reference's 3-25 m/s range, {:.0}% from the CPU \
+         oracle's {:.2} m/s",
+        gpu_wave.speed,
+        if in_range { "inside" } else { "OUTSIDE" },
+        tracks * 100.0,
+        cpu.speed,
+    );
+    println!("# wall {:.1}s", started.elapsed().as_secs_f64());
+    Ok(())
+}
+
+/// One `--agitation` result line, in the terminal version's format.
+fn agitation_line(wave: &murmur_ref::escape::AgitationWave) -> String {
+    format!(
+        "wave speed = {:.2} m/s, R2 = {:.3}, samples = {}, reached = {:.0}%, expansion = {:.0}%",
+        wave.speed,
+        wave.r2,
+        wave.samples,
+        wave.peak_alarmed * 100.0,
+        wave.peak_expansion * 100.0,
+    )
+}
+
 fn main() {
     let args = match parse_args() {
         Ok(args) => args,
@@ -1220,6 +1320,13 @@ fn main() {
         }
         return;
     }
+    if args.agitation {
+        if let Err(error) = run_agitation(&args) {
+            eprintln!("murmuration-gpu: --agitation failed: {error}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     let event_loop = EventLoop::new().expect("opening the window event loop");
     let mut app = App {
@@ -1250,6 +1357,9 @@ struct Renderer {
     /// initial value; the evening arc arrives in a later phase).
     evening: f32,
     birds: usize,
+    /// The run's seed and preferred height, for a window-spawned falcon.
+    seed: u64,
+    z0: f32,
     /// Wall clock of the previous frame, so the flock steps in real time.
     last: Instant,
 }
@@ -1301,7 +1411,10 @@ impl Renderer {
         let mut world = World::new_density_scaled(args.birds, args.seed);
         world.turning = args.turning;
         let evening = world.evening();
-        let sim = Sim::from_snapshot(&gpu, &world.snapshot());
+        let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+        if args.falcon {
+            sim.spawn_falcon(&gpu, args.seed, world.z0);
+        }
 
         let mut frame = FrameRenderer::new(&gpu, config.width, config.height, config.format)?;
         frame.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
@@ -1317,6 +1430,8 @@ impl Renderer {
             evening,
             birds: args.birds,
             last: Instant::now(),
+            seed: args.seed,
+            z0: world.z0,
         })
     }
 
@@ -1396,6 +1511,11 @@ impl Renderer {
         // The bird buffer ping-pongs each step, so re-point the coverage pass.
         self.frame
             .set_birds(&self.gpu, self.sim.bird_buffer(), self.sim.len() as u32);
+        let falcon = if self.sim.falcon_active() {
+            Some(self.sim.falcon(&self.gpu)?.position())
+        } else {
+            None
+        };
         self.frame.set_scene(
             &self.gpu,
             Scene::from_camera(
@@ -1406,7 +1526,8 @@ impl Renderer {
                 self.frame.exposure(),
                 FLAP_AMPLITUDE,
                 self.sim.time(),
-            ),
+            )
+            .with_falcon(falcon),
         );
         self.frame.render(&self.gpu, &view, self.birds as u32, dt);
 
@@ -1446,8 +1567,37 @@ impl ApplicationHandler for App {
                 match event.logical_key {
                     Key::Named(NamedKey::Escape) => event_loop.exit(),
                     Key::Character(ref key) if key.as_str() == "q" => event_loop.exit(),
+                    // `f` calls the falcon (the terminal version's key).
+                    Key::Character(ref key) if key.as_str() == "f" => {
+                        renderer
+                            .sim
+                            .spawn_falcon(&renderer.gpu, renderer.seed, renderer.z0);
+                    }
                     _ => {}
                 }
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                // Moving the mouse makes you the falcon, spawning one on the
+                // first movement (the terminal version's behaviour).
+                if !renderer.sim.falcon_active() {
+                    renderer
+                        .sim
+                        .spawn_falcon(&renderer.gpu, renderer.seed, renderer.z0);
+                }
+                let flock = World::restore(&renderer.sim.snapshot(&renderer.gpu));
+                let plane = if flock.position.is_empty() {
+                    glam::Vec3::Z * renderer.z0
+                } else {
+                    flock.position.iter().copied().sum::<glam::Vec3>() / flock.position.len() as f32
+                };
+                let target = renderer.camera.cursor_to_plane(
+                    position.x as f32,
+                    position.y as f32,
+                    renderer.config.width as f32,
+                    renderer.config.height as f32,
+                    plane,
+                );
+                renderer.sim.steer_falcon(&renderer.gpu, target);
             }
             WindowEvent::Resized(_) => renderer.resize(),
             WindowEvent::Occluded(false) => renderer.window.request_redraw(),

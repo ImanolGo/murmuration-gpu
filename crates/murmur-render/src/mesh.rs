@@ -14,12 +14,14 @@
 //! The tips sit at `±0.2 m`, so the wingspan is exactly the `WINGSPAN = 0.4 m`
 //! the coverage pass uses to size a bird on screen.
 //!
-//! Optical depth: the coverage pass deposits a bird's mass `a·ρ²` as a disc.
-//! The mesh instead deposits it through its silhouette, at a constant optical
-//! depth per fragment, `a / MEAN_AREA` ([`mean_projected_area`]), so a mesh bird
-//! carries the same optical mass as a splat bird *on average over viewing
-//! angles*. Seen edge-on it carries less, which is what an optically thin bird
-//! does; `tests/mesh_area.rs` pins the constant the shader uses.
+//! Optical depth: a bird's optical depth in the model is `a`, and the reference
+//! spreads the mass `a·ρ²` over a disc of diameter `ρ`, whose peak is
+//! `2a/π` ([`DISC_PEAK`]). The mesh deposits that same peak per fragment
+//! through its silhouette — the *per-pixel* optical depth the model's exposure
+//! rule expects, so the auto-exposure behaves as it does for a dot flock. The
+//! mesh's total mass is then smaller than a disc's (its silhouette is thinner
+//! than a disc of the same wingspan), which is what an actual bird looks like:
+//! `docs/model.md` records this and `tests/mesh_area.rs` pins the constant.
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
@@ -28,6 +30,12 @@ use glam::Vec3;
 /// a renderer constant; the phase and rate come from the model. See the module
 /// docs and `docs/model.md` ("Phase 6 adaptations").
 pub const FLAP_DIHEDRAL: f32 = 0.7;
+
+/// The reference disc's peak optical depth per unit `a`: `mass / (2πσ²)` with
+/// `mass = a·ρ²` and `σ = ρ/2`. The mesh deposits this per fragment, so a mesh
+/// bird is as dark per pixel as a dot bird of the same size. Checked against the
+/// shader's `DISC_PEAK` by `tests/mesh_area.rs`.
+pub const DISC_PEAK: f32 = 2.0 / std::f32::consts::PI;
 
 /// Starling wingspan \[m\]: the tip-to-tip width of [`VERTICES`], and the same
 /// number the coverage pass sizes a bird on screen with. Checked against the
@@ -139,13 +147,13 @@ pub fn mesh_vertex(vertex: Vertex, flap: f32) -> Vec3 {
 }
 
 /// The mesh's projected silhouette area on a screen where the wingspan is one
-/// unit (so the area is in units of `ρ²`, the coverage pass's `mass = a·ρ²`).
+/// unit (so the area is in units of `ρ²`).
 ///
 /// `view` is the unit direction from the bird towards the observer, expressed in
 /// the bird's frame. Triangles are projected onto the plane perpendicular to it
 /// and their areas summed; a silhouette that overlaps itself is over-counted,
-/// which is exactly right for an optically thin deposit (the shader deposits
-/// per fragment, and an overlap deposits twice).
+/// which is right for an optically thin deposit (the shader deposits per
+/// fragment, and an overlap deposits twice).
 pub fn projected_area(view: Vec3, flap: f32) -> f32 {
     let n = view.normalize_or_zero();
     // Two orthonormal axes spanning the screen plane.
@@ -165,12 +173,10 @@ pub fn projected_area(view: Vec3, flap: f32) -> f32 {
     area / WINGSPAN.powi(2)
 }
 
-/// The mean projected area over viewing angles and wingbeat phases: the constant
-/// the mesh's fragment shader divides the bird's mass by.
-///
-/// Sampled on a Fibonacci sphere of [`AREA_SAMPLES`] directions at four wingbeat
-/// phases, which `tests/mesh_area.rs` re-runs and compares against the constant
-/// in `shaders/bird_mesh.wgsl`.
+/// The mean projected area over viewing angles and wingbeat phases: a
+/// *measurement* of how much thinner than a disc (`π/4`) the mesh is, kept so
+/// the difference in total ink between a mesh bird and a dot bird is a number
+/// and not an impression.
 pub fn mean_projected_area() -> f32 {
     let mut total = 0.0;
     for i in 0..AREA_SAMPLES {

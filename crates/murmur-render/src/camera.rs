@@ -22,13 +22,19 @@ pub const EYE_HEIGHT: f32 = 1.7;
 pub const EYE_DISTANCE: f32 = 150.0;
 
 /// Nominal vertical field of view \[rad\].
-pub const FOV_V: f32 = 50.0 * std::f32::consts::PI / 180.0;
+pub const FOV_V: f32 = 55.0 * std::f32::consts::PI / 180.0;
+
+/// Scale the visible plane, not the angle. Multiplying a 45° angle by four
+/// produces a degenerate 180° projection; scaling tan(fov/2) keeps it finite.
+pub fn scaled_fov(fov: f32, scale: f32) -> f32 {
+    2.0 * ((fov * 0.5).tan() * scale).atan()
+}
 
 /// Fraction of the binding screen dimension the flock should span.
 const FILL: f32 = 0.6;
 
 /// Bounds on the eased field of view \[rad\].
-const FOV_MIN: f32 = 6.0 * std::f32::consts::PI / 180.0;
+const FOV_MIN: f32 = 45.0 * std::f32::consts::PI / 180.0;
 const FOV_MAX: f32 = 100.0 * std::f32::consts::PI / 180.0;
 
 /// The flock the camera frames: positions and velocities, and the world clock.
@@ -92,6 +98,22 @@ impl Camera {
             ready: false,
             last_world_time: 0.0,
         }
+    }
+
+    /// Aim the initial view before asynchronous telemetry arrives, avoiding a
+    /// snap from the horizon to the first bird. Normal tracking then takes over.
+    pub fn look_at(&mut self, target: Vec3) {
+        self.smoothed_target = target;
+        self.ready = true;
+        self.forward = (target - self.eye).normalize_or_zero();
+        if self.forward.length_squared() < 1e-6 {
+            self.forward = Vec3::Y;
+        }
+        self.right = self.forward.cross(Vec3::Z).normalize_or_zero();
+        if self.right.length_squared() < 1e-6 {
+            self.right = Vec3::X;
+        }
+        self.up = self.right.cross(self.forward);
     }
 
     /// Advances the camera by `dt` seconds to follow `view`. `aspect` is the
@@ -225,17 +247,44 @@ impl Camera {
     }
 }
 
-/// The 5th and 95th percentiles of `v`, sorted in place.
+/// Exact 5th and 95th percentiles, selected in linear time. No full sort is
+/// needed just to frame the flock; captures can contain millions of positions.
 fn percentiles(v: &mut [f32]) -> (f32, f32) {
-    v.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let lo = ((v.len() as f32 * 0.05) as usize).min(v.len() - 1);
     let hi = ((v.len() as f32 * 0.95) as usize).min(v.len() - 1);
-    (v[lo], v[hi])
+    let (_, high, _) = v.select_nth_unstable_by(hi, f32::total_cmp);
+    let high = *high;
+    let (_, low, _) = v[..=hi].select_nth_unstable_by(lo, f32::total_cmp);
+    (*low, high)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wide_capture_scales_focal_length_without_a_180_degree_projection() {
+        for degrees in [12.0f32, 45.0, 70.0] {
+            let fov = degrees.to_radians();
+            let wide = scaled_fov(fov, 4.0);
+            assert!(wide > fov && wide < std::f32::consts::PI);
+            assert!(((wide * 0.5).tan() / (fov * 0.5).tan() - 4.0).abs() < 1e-5);
+        }
+    }
+
+    #[test]
+    fn selected_percentiles_match_a_full_sort() {
+        for n in [1, 2, 19, 20, 4096] {
+            let mut values: Vec<_> = (0..n).map(|i| ((i * 7919) % 1009) as f32 - 500.0).collect();
+            let mut sorted = values.clone();
+            sorted.sort_by(f32::total_cmp);
+            let expected = (
+                sorted[((n as f32 * 0.05) as usize).min(n - 1)],
+                sorted[((n as f32 * 0.95) as usize).min(n - 1)],
+            );
+            assert_eq!(percentiles(&mut values), expected);
+        }
+    }
 
     /// A straight line of birds flying east, as in the reference's camera tests.
     fn line_of_birds(n: usize) -> (Vec<Vec3>, Vec<Vec3>) {

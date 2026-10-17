@@ -12,8 +12,8 @@ set -eu
 
 GPU="${GPU-prime-run}"
 BIRDS="${BIRDS:-8000}"
-SEED="${SEED:-5}"
-MINUTES="${MINUTES:-3}"
+SEED="${SEED:-1}"
+MINUTES="${MINUTES:-1}"
 FRAMES="${FRAMES:-180}"
 FPS="${FPS:-20}"
 OUT="${OUT:-docs/evening.webp}"
@@ -23,8 +23,12 @@ DIR="${DIR:-$(mktemp -d)}"
 cargo build -p murmuration-gpu --release
 BIN=target/release/murmuration-gpu
 
-rm -rf "$DIR"
 mkdir -p "$DIR"
+# Never erase an existing recording or an unrelated directory supplied by DIR.
+if [ -n "$(find "$DIR" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
+    echo "recording directory is not empty: $DIR" >&2
+    exit 1
+fi
 # shellcheck disable=SC2086
 $GPU "$BIN" --record "$DIR" --birds "$BIRDS" --seed "$SEED" \
     --arc-minutes "$MINUTES" --frames "$FRAMES"

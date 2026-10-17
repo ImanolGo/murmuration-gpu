@@ -85,7 +85,7 @@ const TAU_MAX: f32 = 8.0;
 /// Time constant of the temporal accumulation \[s\]: the history keeps about
 /// `TAA_TAU` seconds of frames, short enough that the flock's own motion does not
 /// smear, long enough to quiet the wingbeat's 10 Hz flicker at 30 fps.
-const TAA_TAU: f32 = 0.1;
+const TAA_TAU: f32 = 0.035;
 
 /// Frames in the jitter sequence. Eight Halton offsets cover a pixel's area
 /// evenly enough that a still camera's picture converges in a few frames.
@@ -270,6 +270,9 @@ pub struct Renderer {
 
     exposure: f32,
     exposure_ready: bool,
+    async_exposure: bool,
+    exposure_pending: Option<mpsc::Receiver<Result<(), wgpu::BufferAsyncError>>>,
+    exposure_elapsed: f32,
 }
 
 /// A prepared full-screen render target the tone-map pass writes into.
@@ -307,7 +310,8 @@ impl Renderer {
         let scene_wgsl = include_str!("../shaders/scene.wgsl");
         let sky_wgsl = include_str!("../shaders/sky.wgsl");
         let sky_source = format!(
-            "{scene_wgsl}\n{sky_wgsl}\n{}",
+            "{scene_wgsl}\n{sky_wgsl}\n{}\n{}",
+            include_str!("../shaders/atmosphere.wgsl"),
             include_str!("../shaders/sky_pass.wgsl")
         );
         let sky_module = shader(device, "sky", &sky_source);
@@ -797,12 +801,21 @@ impl Renderer {
             histogram_staging,
             exposure: DEFAULT_EXPOSURE,
             exposure_ready: false,
+            async_exposure: false,
+            exposure_pending: None,
+            exposure_elapsed: 0.0,
         })
     }
 
     /// The current adaptive exposure.
     pub fn exposure(&self) -> f32 {
         self.exposure
+    }
+
+    /// The window uses delayed, non-blocking exposure telemetry. Captures keep
+    /// the synchronous path so their converged stills remain reproducible.
+    pub fn set_async_exposure(&mut self, enabled: bool) {
+        self.async_exposure = enabled;
     }
 
     /// Fixes the exposure and stops it adapting. A frame whose subject is one
@@ -860,6 +873,12 @@ impl Renderer {
     /// exponential window of the last few frames.
     pub fn set_history_weight(&mut self, weight: Option<f32>) {
         self.history_weight = weight;
+    }
+
+    /// Discard temporal samples after a camera cut; history from another lens
+    /// must not contaminate a frozen-view shimmer measurement.
+    pub fn reset_history(&mut self) {
+        self.accum_ready = false;
     }
 
     /// How many birds the last frame drew at each LOD level: mesh, impostor,
@@ -1032,13 +1051,20 @@ impl Renderer {
         self.output_format
     }
 
-    /// Renders one frame into `view` and updates the adaptive exposure for the
-    /// next frame, blocking on the small exposure readback.
+    /// Renders one frame into `view` and updates adaptive exposure. Captures
+    /// block on the small histogram; set_async_exposure enables delayed,
+    /// non-blocking telemetry for the window.
     pub fn render(&mut self, gpu: &Gpu, view: &TextureView, birds: u32, dt: f32) {
         self.render_impl(gpu, view, birds, dt);
     }
 
     fn render_impl(&mut self, gpu: &Gpu, view: &TextureView, birds: u32, dt: f32) {
+        self.exposure_elapsed += dt.max(0.0);
+        self.adapt_exposure(gpu);
+        if self.async_exposure {
+            self.scene.exposure = self.exposure;
+        }
+        let read_exposure = self.exposure_pending.is_none();
         // The optical-depth histogram is an atomic counter; zero it first. The
         // indirect draws start at zero instances, with their per-level vertex
         // counts kept.
@@ -1217,13 +1243,15 @@ impl Renderer {
             pass.set_bind_group(0, &self.exposure_bind, &[]);
             pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
         }
-        encoder.copy_buffer_to_buffer(
-            &self.histogram,
-            0,
-            &self.histogram_staging,
-            0,
-            (BINS * 4) as u64,
-        );
+        if read_exposure {
+            encoder.copy_buffer_to_buffer(
+                &self.histogram,
+                0,
+                &self.histogram_staging,
+                0,
+                (BINS * 4) as u64,
+            );
+        }
         if let Some(set) = &self.timestamps {
             encoder.write_timestamp(set, 3);
         }
@@ -1290,23 +1318,41 @@ impl Renderer {
         }
 
         gpu.queue.submit(Some(encoder.finish()));
-        self.adapt_exposure(gpu, dt);
+        if read_exposure {
+            let (tx, rx) = mpsc::channel();
+            self.histogram_staging
+                .map_async(wgpu::MapMode::Read, .., move |result| {
+                    let _ = tx.send(result);
+                });
+            self.exposure_pending = Some(rx);
+        }
+        if !self.async_exposure {
+            self.adapt_exposure(gpu);
+        }
     }
 
     /// Reads back the histogram and eases the exposure toward the 80th
     /// percentile of the flock's optical depth, exactly as the reference does.
-    fn adapt_exposure(&mut self, gpu: &Gpu, dt: f32) {
-        let (tx, rx) = mpsc::channel();
-        self.histogram_staging
-            .map_async(wgpu::MapMode::Read, .., move |result| {
-                let _ = tx.send(result);
-            });
-        gpu.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .expect("waiting for the exposure readback");
-        rx.recv()
-            .expect("the poll ran the mapping callback before returning")
-            .expect("mapping the exposure histogram");
+    fn adapt_exposure(&mut self, gpu: &Gpu) {
+        let Some(rx) = &self.exposure_pending else {
+            return;
+        };
+        if self.async_exposure {
+            gpu.device
+                .poll(wgpu::PollType::Poll)
+                .expect("polling exposure");
+            match rx.try_recv() {
+                Err(mpsc::TryRecvError::Empty) => return,
+                Err(error) => panic!("exposure callback disconnected: {error}"),
+                Ok(result) => result.expect("mapping the exposure histogram"),
+            }
+        } else {
+            gpu.wait_bounded(murmur_gpu::device::WAIT_BUDGET)
+                .expect("waiting for exposure");
+            rx.recv()
+                .expect("exposure callback")
+                .expect("mapping exposure");
+        }
         let range = self
             .histogram_staging
             .get_mapped_range(..)
@@ -1330,6 +1376,8 @@ impl Renderer {
         };
         drop(range);
         self.histogram_staging.unmap();
+        self.exposure_pending = None;
+        let dt = std::mem::take(&mut self.exposure_elapsed);
 
         let Some(tau80) = tau80 else {
             return;

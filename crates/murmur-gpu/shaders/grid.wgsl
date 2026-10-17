@@ -210,6 +210,11 @@ fn grid_scan_add(
         if k < P.buckets {
             let v = offsets[k] + add;
             offsets[k] = v;
+            if k == P.buckets - 1u {
+                // The arc has inactive capacity: the end is the live count,
+                // not P.n. Otherwise the last bucket walks stale sorted slots.
+                offsets[P.buckets] = v + atomicLoad(&counts[k]);
+            }
             atomicStore(&counts[k], v);
         }
     }

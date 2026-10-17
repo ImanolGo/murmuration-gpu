@@ -23,6 +23,8 @@ struct BirdScreen {
     rho: f32,
     /// Wing exposure at distance: the bird's optical mass is `a·rho²`.
     a: f32,
+    /// Distance attenuation, without the unresolved disc's wing-area factor.
+    atmosphere: f32,
     /// Wing dihedral this frame \[rad\].
     flap: f32,
     /// The bird's forward direction, projected into screen space.
@@ -78,6 +80,7 @@ fn bird_screen(b: Bird) -> BirdScreen {
     let flap = 1.0 + scene.flap_amplitude * b.flap_amp * sin(b.flap_phase);
     let wing = clamp(abs(dot(up, dhat)) * flap, 0.0, 1.0);
     let atmosphere = clamp(1.0 - depth / ATMOSPHERE, 0.25, 1.0);
+    s.atmosphere = atmosphere;
     s.a = (0.15 + 0.85 * wing) * atmosphere;
     s.flap = FLAP_DIHEDRAL * b.flap_amp * sin(b.flap_phase);
 
@@ -85,7 +88,11 @@ fn bird_screen(b: Bird) -> BirdScreen {
     let fwd = project_to(b.pos + f * 0.2) - project_to(b.pos);
     let lateral = project_to(b.pos + side * 0.2) - project_to(b.pos);
     s.fwd2 = unit2(fwd.xy, vec2<f32>(0.0, -1.0));
-    s.side2 = unit2(lateral.xy, vec2<f32>(1.0, 0.0));
+    // The Gaussian impostor needs an orthonormal screen frame. Independently
+    // normalising projected 3D axes can make them almost parallel, turning a
+    // bird into a broad streak and invalidating its optical-mass normalisation.
+    let wing_axis = vec2<f32>(-s.fwd2.y, s.fwd2.x);
+    s.side2 = wing_axis * select(-1.0, 1.0, dot(lateral.xy, wing_axis) >= 0.0);
     return s;
 }
 

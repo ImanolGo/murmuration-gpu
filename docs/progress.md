@@ -1085,3 +1085,261 @@ authored separately from the binary.
   silhouette band, not a port of the terminal's `draw_reeds`.
 - GPU run-to-run bit-reproducibility remains out of scope (PLAN.md); a recorded
   evening is reproducible on one engine.
+
+## Visual revision / phase 9 — continuous arrival and real-time path (2026-10-17)
+
+User request: render and inspect the app, remove the visibly staged banks of
+arriving birds, and improve naturalness and speed. Phases 0–8 already met their
+recorded acceptance criteria; PLAN.md explicitly adds this visual revision to
+phase 9. Phase 9 is **in progress**, not closed by a nicer still.
+
+### Diagnosis from fresh renders
+
+Rendered an 8,000-bird-target, seed-1, one-minute evening before changing the model
+(`--record`, 180 frames, 960×540). A contact sheet confirms the complaint:
+separate small clouds become a chain of disconnected lobes, and the chain
+persists into display. The old arrival only fills **3,212 of the requested 8,000**
+before that short evening's display begins. The old 50–300-bird spawns every 0.5 seconds are visible
+in the image. The first continuous-flow experiment instead becomes a connected
+banked mass, with a rolling edge and internal density structure. That experiment
+also revealed clipping caused by the time-lapse camera's incorrect time step.
+
+### Changes
+
+- Both engines now use a smooth cumulative arrival schedule over at most six
+  seconds and a density-scaled, grazing corridor. No force weights, flight speed
+  or bank parameters were tuned. The exact initial-condition revision is in
+  `docs/model.md`; no-arc oracle baselines are intentionally unchanged.
+- The window retains fractional integration time, rather than rounding down
+  every frame or forcing one step when less than 5 ms elapsed. Captures retain
+  fractional time too. Time-lapse recording uses absolute step targets and the
+  actual elapsed simulation interval for camera/exposure easing, and rebinds the
+  current ping-pong bird buffer every frame.
+- Default 8,000 birds and a 12° minimum lens angle give the arrival more context.
+  Exact percentile selection avoids sorting full position arrays.
+- The window replaces its full-flock blocking readback with at most 4,096
+  asynchronous 32-byte camera samples (128 KiB). It predicts the short telemetry
+  delay using velocity; it never changes the simulation. Exposure readback is
+  also non-blocking in the window, with only one request in flight. Captures
+  retain full-state framing and synchronous exposure.
+- Moving the mouse no longer silently spawns a falcon. `f` or `--falcon` must
+  enable it first; subsequent mouse motion steers it without a full snapshot.
+- Exact query optimisations: compact the birds due a decision into scratch
+  storage; reject grid cells whose bounds cannot intersect the query sphere.
+  No neighbour cap, reduced decision frequency or relaxed time step was added.
+- Two phase-8 regressions found: the benchmark's synthetic birds had not set
+  `live=1`, so it could benchmark an empty flock; the final grid offset was still
+  buffer capacity, not the live histogram sum, potentially exposing stale sorted
+  slots in its last bucket. Both now have regression tests. This does not
+  retroactively invalidate measurements made before phase 8 added `live`.
+
+### Measurement and validation
+
+Live-bird baseline, before the query changes: GTX 1650 Max-Q, NVIDIA 615.78.08,
+Vulkan, 100,000 birds, 40 timestamped steps after 20 warm-up steps, no render
+target: **13.7622 ms/step**, of which `decide` is **12.7786 ms**. Decision
+compaction alone: **12.9232 ms/step**, a 6.1% reduction including its new
+0.4502 ms preparation pass. These are the synthetic 0.5 birds/m³ scenario, not
+settled-flock or window FPS figures.
+
+With conservative sphere/cell rejection as well: **8.9050 ms/step**, `decide`
+**7.3806 ms**, a **35.3%** reduction from the live-bird baseline. Same scenario,
+same 40 samples; compaction and rejection change neither the accepted neighbour
+set nor the force parameters. New measurements at the other planned counts:
+
+| Birds | GPU pass total / step | `decide` | State |
+| ---: | ---: | ---: | --- |
+| 8,000 | 1.3036 ms | 1.1367 ms | Actual evening at 30 s, seed 1, 100 samples |
+| 100,000 | 8.9050 ms | 7.3806 ms | Synthetic scatter, 40 samples |
+| 1,000,000 | 129.7379 ms | 112.7949 ms | Synthetic scatter, 40 samples |
+| 3,000,000 | 429.2365 ms | 378.4869 ms | Synthetic scatter, 40 samples |
+
+All are GPU timestamp measurements on the adapter/driver above, headless (no
+resolution). The actual-evening total excludes the small optional arc passes.
+`--bench --birds 8000 --seconds 30 --steps 100` now measures an actual display
+instead of the synthetic scatter; without `--seconds`, the original synthetic
+scenario remains. The model takes 200 steps per real second, so a step over
+5 ms cannot keep real time regardless of render speed. PLAN.md and README now
+say the large-count targets are missed and identify `decide` as the bottleneck.
+No window FPS is inferred from these pass times.
+
+### Visual evidence
+
+- Regenerated `docs/evening.webp` and `docs/evening.png` from the revised app
+  with `scripts/evening.sh` (8k, seed 1, one-minute evening, 180 frames at
+  960×540; encoded at 20 fps as a time-lapse). Inspected sampled frames through
+  arrival, display, roosting and night. The revised display is a connected,
+  turning mass instead of the old chain of disconnected banks. The framing
+  correction removes the clipping seen in the first experiment.
+- `docs/arrival-comparison.png` shows old/new arrival and display with the same
+  requested target, seed and one-minute duration: **3,212 live birds before,
+  8,000 after** in the display. It compares the complete viewing experience,
+  not a controlled equal-live-count dynamics experiment. `docs/arrival.mp4` is a separate, real-speed arrival:
+  `--capture DIR --birds 8000 --seconds 0 --frames 360 --zoom 1`, encoded at
+  30 fps (12 s). The movie comes from simulated bird state, not a scripted shape.
+  Before the resolved-material correction below, the arrival sequence's mean GPU
+  **render** time was 0.48 ms/frame at 960×540,
+  on the same GTX 1650/driver, with count growing from zero to 8k. It is not a
+  full-8k settled render benchmark or a window FPS measurement.
+- The zero-bird frozen part of that arrival capture has no raw shimmer to
+  compare. It exposed an old reporting error (dividing by a zero-change control),
+  now fixed to print “reduction unmeasured” instead of a meaningless percentage.
+- A 35 s window smoke run selected the NVIDIA Vulkan adapter, at 948×1020 in
+  Niri, with no validation or mapping errors. It exposed Mailbox as the surface
+  default; the window now explicitly uses FIFO/vsync to avoid rendering discarded
+  frames and leave time for simulation.
+
+The actual-window screenshot at 1268×1380 then exposed a resolution-dependent
+wash-out: many more birds were meshes, and the phase-7 mesh material applied
+wing exposure to both projected geometry and opacity. The flock became faint
+where the smaller capture was dark. Resolved bodies now use a near-opaque
+material (−ln(0.01), with the existing atmosphere and LOD weights), defined in
+Rust and checked against WGSL, rather than reusing the unresolved disc's area
+factor. This is an explicit rendering adaptation in `docs/model.md`, not a
+change to flocking. Unresolved coverage is unchanged. Rechecking the sweep found
+another phase-8 `live` regression: its single test bird was inactive, so the
+tool reported zero ink and falsely called every transition smooth. It now sets
+`live=1`, rejects an empty/mesh-less sweep, and returns an error for a transition
+over the 2× growth-control threshold. The corrected, live-bird sweep with the
+new material measures **0.71 black pixels** for the worst mesh-band step versus
+**0.86** for growth away from a threshold (**0.83×**, under 2×). Ink across the
+4–8 px cross-fade is **2.01 → 2.58**, rather than the old translucent material's
+2.01 → 0.53. A second actual-window screenshot confirms dark silhouettes instead
+of the high-resolution wash-out. The material definition is mirrored by the Rust
+material constant and tested against its 1% transmittance.
+
+### Final validation
+
+- Regenerated the evening animation/still and the 12 s real-speed arrival with
+  the final material and exact integer recording timeline. Inspected the final
+  stills and the actual window, not only the earlier small captures.
+- `docs/still-8k-flow.png`: 8,000 live birds, seed 1, t=30 s, 1280×720, GTX 1650
+  Max-Q / NVIDIA 615.78.08 / Vulkan. GPU timestamps: **0.75 ms/frame** (`lod`
+  0.02, sky/birds 0.32, exposure 0.11, TAA 0.26, tone map 0.05; rounded).
+  LOD counts: 4,482 mesh plus 8,000 impostor instances (cross-fading birds occur
+  in both lists). This is render time only, not simulation or readback time.
+  The final arrival's mean render time is 0.45 ms at 960×540 while its live count
+  grows from zero to 8k. Its empty frozen control correctly reports unmeasured.
+- The final live-bird LOD sweep passes its 2× threshold, with the 0.83× ratio
+  above; it exits successfully and draws a visible mesh. An empty sweep or a
+  failed transition now exits with an error instead of printing false success.
+- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and
+  `prime-run cargo test -- --test-threads=1` pass: **79 tests passed**, zero
+  failed, **two opt-in long tests ignored** (the full 120 s oracle series and
+  60 s × five-seed parity sweep). **No GPU test was skipped for lack of hardware.**
+  New regressions cover continuous arrival in both engines, live benchmark
+  birds, the final live grid offset, compacted decisions with inactive/not-due
+  birds, exact percentile selection, refresh-rate-independent stepping,
+  observational camera sampling and asynchronous exposure parity.
+- `sh -n scripts/evening.sh` and `git diff --check` pass. The recording script
+  no longer recursively deletes a caller-supplied directory; it requires an
+  empty destination.
+
+Phase 9's larger-count performance work and the model's long-run shape
+limitations remain open. No new claim of strong dark waves, vacuoles or
+naturalistic split/merge dynamics is made by this revision.
+
+## User rejection, actual startup profile and reference-led revision
+
+The user rejected the previous bird/background appearance and reported roughly
+2 FPS **from launch**. This is valid feedback: isolated GPU passes and offline
+stills did not establish acceptable interactive playback. PLAN.md reopens visual
+acceptance. User photos and the two supplied MP4s are left unmodified. Sampled
+video sequences show thin, folding formations with density gradients and small
+individual birds; the old rounded blobs and automatic close-up are not a match.
+
+### Reproduced cause, not a guessed FPS fix
+
+Added `--profile-window SECONDS`, with CPU spans around acquisition, simulation
+submission, tracking, camera, bindings, render submission and presentation.
+Whole GPU simulation batches are timestamped into a bounded history; it is read
+only after playback ends, never with a per-frame wait.
+
+The release window on GTX 1650 Max-Q / NVIDIA 615.78.08 / Vulkan / Niri, at
+1268×1380 and 8k/seed 1, reproduced **300–400 ms** waits and 40-step catch-up
+batches. Before the fixes it presented 149 frames in 12.006 s (**12.41 FPS over
+the whole run**, including recovery; the early stall intervals were much worse),
+and simulated only 8.540 s. GPU simulation steps peaked at **10.051 ms**. Surface
+acquisition and CPU camera work were not the bottleneck: GPU work backed up and
+the driver blocked in presentation.
+
+Two related startup problems were fixed:
+
+1. Wide neighbour queries compared against the allocated 8,000 slots and could
+   walk all those inactive slots even with only one live bird. They now use the
+   grid's exact live prefix and compare cell cost with the live count. A GPU
+   regression proves the same neighbourhoods as brute force at 1/17/257 live
+   birds in an 8k allocation. The fully populated fallback order is preserved.
+2. Fixing sparse queries alone was insufficient: each newborn still started at
+   a 5 m perception radius and could scan hundreds of neighbours before adapting.
+   Both reference and GPU now initialise that radius from the known arrival flux
+   and cross-section (about 1.07 m at peak flux). The formula and endpoint
+   regularisation are in `docs/model.md`. Ongoing force weights, integration,
+   reaction time and adaptive-radius law are unchanged; `World::new` still
+   starts at 5 m and retains the no-arc oracle baseline.
+
+### Actual retest
+
+With the new visuals included, the final instrumented **release window** presented
+**887 frames / 15.007 s = 59.11 FPS**, simulating **14.995 s**, at the same
+1268×1380 / 8k / seed 1 on the same GPU and driver. Frame intervals: p50 16.641 ms,
+p95 18.879 ms, p99 31.359 ms, max 41.593 ms. GPU simulation per-step: p95 1.783 ms,
+max 2.889 ms. There was no return to the old 300–400 ms startup catch-up loop.
+A compositor screenshot of the newly launched window was taken during the run;
+old, still-open app instances were excluded by window ID. This validates that
+startup case, not a guarantee at every count/resolution/seed or over an evening.
+`docs/window-profile-startup.txt` records both runs and commands.
+
+### Visual changes and remaining scope
+
+- Broader 45° minimum / 55° nominal framing, with the initial camera aimed at the
+  actual approach corridor before asynchronous telemetry arrives. Birds remain
+  small, with sky and horizon context instead of a close-up of large smudges.
+- Narrower, CPU-defined impostor body/wing coefficients. The screen axes are now
+  orthogonal: the old independently normalised projections could become almost
+  parallel, producing broad streaks and invalidating Gaussian normalisation.
+  Quad padding is smaller. Temporal accumulation is 35 ms instead of 100 ms to
+  reduce moving-bird trails.
+- A procedural sky with world-direction cloud layers, low-sun light and a distant
+  horizon. `atmosphere.rs` mirrors the WGSL and a GPU test compares actual rendered
+  pixels against it. The palette is still the base; this is not a validated
+  physical atmosphere. The presentation remaps arrival lighting into dusk while
+  leaving the simulation evening clock alone.
+- Reeds now occupy bearings/elevations at three distances with curved tapering
+  stems, leaves and seed heads, rather than identical two-pixel screen columns.
+  They respond to slow wind and stay outside the flock's exposure histogram.
+- The updated **live-bird** LOD sweep passes: mesh transition worst change
+  0.58 black pixels versus a 0.92 growth control (**0.63×**, below 2×); the splat
+  switch is 0.18 versus 0.25. This establishes the sampled threshold criterion,
+  not photographic quality or natural sheet-folding dynamics.
+
+`docs/reference-revision.mp4` is an 8 s / 240-frame, 30 fps real-speed clip at
+960×540 starting from simulated t=10 s, with no lens zoom. It is an offline
+recording, not evidence of interactive FPS; the separate window profiler supplies
+that evidence. `docs/reference-revision.png` is the final 8k/seed-1/t=30 s view at
+1280×720. GPU render time for that still is **0.88 ms/frame** (simulation excluded)
+on the GTX 1650 Max-Q / NVIDIA 615.78.08 / Vulkan. The moving clip averaged
+0.54 ms/render at 960×540. Inspected the new window screenshot and final still:
+the bird grain is finer and the scene has sky/foreground context, but the flock
+still tends to a compact mass. It does **not** establish a match to the supplied
+videos' folding sheets.
+
+Validation also found that the old distant static control multiplied FOV by
+four: 45° became a degenerate 180° projection, so the supposedly populated
+control had no visible ink. It now scales `tan(fov/2)` by four and holds its scene
+exposure constant. A unit test checks the exact focal ratio and a finite lens.
+Final regression checks include that correction.
+
+The final complete suite passed **85 tests**, zero failures, two opt-in long
+tests ignored, and no GPU skips. Fmt and clippy passed. The distant-control lens
+test is included. That control also needed its temporal history reset after the
+hard near-to-far camera cut; otherwise stale near-view samples contaminated the
+measurement. After resetting history, holding exposure fixed and correcting the
+projection, the 30-frame static control at 960×540 / 8k / seed 1 measures **6.8 →
+3.2 black pixels/frame**, about **52% less change**, with TAA on. This was checked
+with the same NVIDIA/Vulkan GPU; it is a shimmer measurement, not window FPS.
+
+Complex folding, natural splits and vacuoles remain unvalidated; no extra hidden
+predator, scripted outline or force-weight tuning was added to pretend to
+reproduce them. Photographic appearance remains subject to user review, not an
+acceptance claim made from a nicer background alone.

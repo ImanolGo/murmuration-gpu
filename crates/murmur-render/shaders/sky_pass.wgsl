@@ -9,7 +9,7 @@ fn vs_sky(@builtin(vertex_index) vid: u32) -> @builtin(position) vec4<f32> {
 
 @fragment
 fn fs_sky(@builtin(position) coord: vec4<f32>) -> @location(0) vec4<f32> {
-    var colour = sky_linear_ray(ray_through(coord.xy));
+    var colour = atmosphere_sky(ray_through(coord.xy));
     // Stars at night, in the upper half of the frame. Mirrors `render/sky.rs`'s
     // `star` hash: about 6 in 4096 pixels, lit as the evening deepens.
     if (scene.evening > 0.75 && coord.y < scene.viewport.y * 0.5) {

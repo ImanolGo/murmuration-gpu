@@ -9,8 +9,10 @@
 //! quad and the phase-5 splat, chosen per bird by a compute pass that writes the
 //! indirect draws, plus temporal anti-aliasing.
 
+pub mod atmosphere;
 pub mod camera;
 pub mod mesh;
 pub mod png;
 pub mod renderer;
 pub mod sky;
+pub mod tracking;

@@ -25,7 +25,6 @@
 const ARRIVAL_END: f32 = 0.15;
 const DISPLAY_END: f32 = 0.70;
 const ROOSTING_END: f32 = 0.90;
-const GROUP_INTERVAL: f32 = 0.5;
 
 // The next uniform in [0, 1) from the arc's counter-based stream, matching
 // `next_uniform` in `crates/murmur-gpu/src/arc.rs`.
@@ -62,14 +61,14 @@ fn slot_rng(i: u32) -> u32 {
 }
 
 // world.rs::push_bird: a fresh bird, inactive fields at their defaults.
-fn new_bird(pos: vec3<f32>, vel: vec3<f32>, slot: u32) -> Bird {
+fn new_bird(pos: vec3<f32>, vel: vec3<f32>, slot: u32, perception: f32) -> Bird {
     var b: Bird;
     b.pos = pos;
     b.roll = 0.0;
     b.vel = vel;
     b.spin = 0.0;
     b.steering = vec3<f32>(0.0);
-    b.radius = 5.0;
+    b.radius = perception;
     b.next_decision = clock.time + uniform_range(0.0, P.du);
     b.centrality = 0.0;
     b.flap_phase = uniform_range(0.0, TAU);
@@ -89,31 +88,37 @@ fn new_bird(pos: vec3<f32>, vel: vec3<f32>, slot: u32) -> Bird {
     return b;
 }
 
-// arc.rs::spawn_group: a compact group in the shared approach corridor, heading
-// at the roost with a little noise.
+// arc.rs::spawn_group: continuous flux through a shared grazing approach.
 fn spawn_group(count: u32) {
-    let bearing = arc.bearing + uniform_range(-0.045, 0.045);
-    let corridor = arc.radius + uniform_range(-8.0, 8.0);
-    let height = P.z0 + uniform_range(-10.0, 10.0);
-    let base = vec3<f32>(corridor * cos(bearing), corridor * sin(bearing), height);
-    let aim = vec3<f32>(uniform_range(-20.0, 20.0), uniform_range(-20.0, 20.0), P.z0);
-    let spread = pow(f32(count), 1.0 / 3.0) * 1.9;
+    let outward = vec3<f32>(cos(arc.bearing), sin(arc.bearing), 0.0);
+    let tangent = vec3<f32>(-outward.y, outward.x, 0.0);
+    let heading = -outward * 0.6 + tangent * 0.8;
+    let side = cross(heading, vec3<f32>(0.0, 0.0, 1.0));
+    let base = outward * arc.radius + vec3<f32>(0.0, 0.0, P.z0);
+    let span = min(arc.duration * ARRIVAL_END, 6.0);
+    let spread = max(sqrt(f32(P.n) / (P.v0 * span * (TAU * 0.5) * 0.5)), 3.0);
+    let u = clamp((clock.time - f32(arc.epoch) * arc.duration) / span, 0.0, 1.0);
+    let flux = f32(P.n) * 6.0 * u * (1.0 - u) / span;
+    let density = flux / (P.v0 * (TAU * 0.5) * spread * spread * 0.6);
+    let perception = clamp(pow(P.n_c / ((4.0 / 3.0) * (TAU * 0.5) * max(density, 0.05)), 1.0 / 3.0), P.r_h, 5.0);
     for (var k = 0u; k < count; k = k + 1u) {
         let slot = arc.next + k;
         if slot >= P.n {
             break;
         }
-        let offset = random_unit() * spread * pow(next_uniform(), 1.0 / 3.0);
-        let pos = base + vec3<f32>(offset.x, offset.y, offset.z * 0.6);
-        let toward = aim - pos;
-        var dir = normalize_or_zero(toward)
+        let angle = uniform_range(0.0, TAU);
+        let r = spread * sqrt(next_uniform());
+        let pos = base + side * (r * cos(angle))
+            + vec3<f32>(0.0, 0.0, r * sin(angle) * 0.6)
+            + heading * uniform_range(-0.5, 0.5);
+        var dir = heading
             + vec3<f32>(
                 uniform_range(-0.05, 0.05),
                 uniform_range(-0.05, 0.05),
                 uniform_range(-0.025, 0.025),
             );
         dir = normalize_or_zero(dir);
-        flock[slot] = new_bird(pos, dir * P.v0, slot);
+        flock[slot] = new_bird(pos, dir * P.v0, slot, perception);
     }
     arc.next = min(arc.next + count, P.n);
 }
@@ -133,27 +138,24 @@ fn arc_kernel() {
         arc.next = 0u;
         arc.spawn_timer = 0.0;
         arc.bearing = uniform_range(0.0, TAU);
-        arc.radius = uniform_range(280.0, 320.0);
+        arc.radius = uniform_range(180.0, 200.0);
     }
     let f = time / arc.duration - f32(epoch);
 
     if f < ARRIVAL_END {
         arc.z0 = P.z0;
-        arc.spawn_timer -= P.dt;
-        // One group per `GROUP_INTERVAL`, until the flock is at capacity. The
-        // loop is bounded by `next < P.n`; each pass adds at least one bird.
-        while arc.spawn_timer <= 0.0 && arc.next < P.n {
-            let remaining = P.n - arc.next;
-            let group = min(50u + u32(next_uniform() * 251.0), remaining);
-            spawn_group(group);
-            arc.spawn_timer += GROUP_INTERVAL;
-        }
-        if arc.spawn_timer < 0.0 {
-            arc.spawn_timer = 0.0;
+        let span = min(arc.duration * ARRIVAL_END, 6.0);
+        let u = clamp((time - f32(epoch) * arc.duration) / span, 0.0, 1.0);
+        let wanted = min(u32(f32(P.n) * u * u * (3.0 - 2.0 * u)), P.n);
+        if wanted > arc.next {
+            spawn_group(wanted - arc.next);
         }
     } else if f < DISPLAY_END {
         // Display: the flock holds the roost height.
         arc.z0 = P.z0;
+        if arc.next < P.n {
+            spawn_group(P.n - arc.next);
+        }
     } else if f < ROOSTING_END {
         // Roosting: the roost level sinks to the reed tops as the flock lands.
         let g = clamp((f - DISPLAY_END) / (ROOSTING_END - DISPLAY_END), 0.0, 1.0);

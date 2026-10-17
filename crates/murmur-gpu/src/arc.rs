@@ -33,7 +33,7 @@ pub struct ArcState {
     /// Radius of the approach corridor \[m\].
     pub radius: f32,
 
-    /// Time until the next arriving group \[s\].
+    /// Reserved arrival accumulator (kept for the shared layout).
     pub spawn_timer: f32,
     /// The next free bird slot (the live count while nothing has landed).
     pub next: u32,
@@ -74,7 +74,7 @@ impl ArcState {
     pub fn new(minutes: f32, seed: u64, z0: f32) -> Self {
         let mut rng = crate::bird::initial_rng(seed, ARC_STREAM_ID);
         let bearing = next_uniform(&mut rng) * std::f32::consts::TAU;
-        let radius = 280.0 + next_uniform(&mut rng) * 40.0;
+        let radius = 180.0 + next_uniform(&mut rng) * 20.0;
         Self {
             z0,
             duration: (minutes * 60.0).max(1.0),

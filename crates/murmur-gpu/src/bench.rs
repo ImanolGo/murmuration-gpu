@@ -79,6 +79,15 @@ impl BenchReport {
 /// Panics if the device was not opened with `TIMESTAMP_QUERY`; the caller is
 /// expected to check `adapter.features()` and skip with a message.
 pub fn run(gpu: &Gpu, birds: usize, steps: u32) -> BenchReport {
+    let mut sim = Sim::new(gpu, crate::params::Params::new(birds, 1));
+    sim.write_birds(gpu, &setup(birds, 1));
+    sim.advance(gpu, WARMUP);
+    run_sim(gpu, &mut sim, steps)
+}
+
+/// Measures an actual display state instead of the synthetic scatter. Optional
+/// arc/falcon passes are not part of STEP_PASSES and are excluded from its sum.
+pub fn run_sim(gpu: &Gpu, sim: &mut Sim, steps: u32) -> BenchReport {
     assert!(
         gpu.device
             .features()
@@ -86,10 +95,7 @@ pub fn run(gpu: &Gpu, birds: usize, steps: u32) -> BenchReport {
         "the benchmark needs the device's TIMESTAMP_QUERY feature"
     );
     let device = &gpu.device;
-
-    let mut sim = Sim::new(gpu, crate::params::Params::new(birds, 1));
-    sim.write_birds(gpu, &setup(birds, 1));
-    sim.advance(gpu, WARMUP);
+    let birds = sim.len();
 
     let query_set = device.create_query_set(&QuerySetDescriptor {
         label: Some("bench: timestamps"),
@@ -199,8 +205,18 @@ pub fn setup(n: usize, seed: u64) -> Vec<Bird> {
             flap_amp: 1.0,
             id: i as u32,
             rng: initial_rng(seed, i as u32),
+            live: 1,
             ..Bird::zeroed()
         });
     }
     birds
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn benchmark_birds_are_alive() {
+        let birds = super::setup(2000, 1);
+        assert!(birds.iter().all(|b| b.live == 1));
+    }
 }

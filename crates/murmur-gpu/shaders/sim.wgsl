@@ -64,6 +64,7 @@ const TAU: f32 = 6.283185307179586;
 @group(0) @binding(3) var<storage, read_write> clock: Clock;
 @group(0) @binding(11) var<storage, read_write> arc: ArcState;
 @group(0) @binding(4) var<storage, read_write> bucket: array<u32>;
+@group(0) @binding(5) var<storage, read_write> counts: array<atomic<u32>>;
 @group(0) @binding(6) var<storage, read_write> offsets: array<u32>;
 @group(0) @binding(7) var<storage, read_write> sorted: array<u32>;
 
@@ -231,6 +232,15 @@ fn cen_add(cen: Cen, d: vec3<f32>, dist: f32) -> Cen {
 // (the table is smaller than the world), so each candidate is kept only when its
 // own cell matches the one being queried; that also stops a bird being counted
 // twice when two query cells hash to the same bucket.
+fn cell_intersects_sphere(cell: vec3<i32>, p: vec3<f32>, r2: f32) -> bool {
+    let size = 1.0 / P.inv_cell;
+    let lo = vec3<f32>(cell) * size;
+    let nearest = clamp(p, lo, lo + vec3<f32>(size));
+    let delta = nearest - p;
+    // Conservative padding at cell faces: reject only cells certainly outside.
+    return dot(delta, delta) <= r2 + 1e-4;
+}
+
 fn gather_grid(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
     var acc = acc_empty();
     let lo = cell_of(p - vec3<f32>(radius));
@@ -240,6 +250,9 @@ fn gather_grid(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> 
         for (var cy = lo.y; cy <= hi.y; cy = cy + 1) {
             for (var cx = lo.x; cx <= hi.x; cx = cx + 1) {
                 let cell = vec3<i32>(cx, cy, cz);
+                if !cell_intersects_sphere(cell, p, r2) {
+                    continue;
+                }
                 let b = bucket_of(cell);
                 let end = offsets[b + 1u];
                 for (var s = offsets[b]; s < end; s = s + 1u) {
@@ -276,6 +289,9 @@ fn gather_grid_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
         for (var cy = lo.y; cy <= hi.y; cy = cy + 1) {
             for (var cx = lo.x; cx <= hi.x; cx = cx + 1) {
                 let cell = vec3<i32>(cx, cy, cz);
+                if !cell_intersects_sphere(cell, p, r2) {
+                    continue;
+                }
                 let b = bucket_of(cell);
                 let end = offsets[b + 1u];
                 for (var s = offsets[b]; s < end; s = s + 1u) {
@@ -344,6 +360,36 @@ fn gather_bruteforce_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
     return cen;
 }
 
+// The same exact-radius query over the live prefix of the grid's sorted list.
+// During arrival the allocated capacity can be thousands of times larger than
+// the actual flock. Empty cells and inactive slots are not useful candidates.
+fn gather_live(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
+    var acc = acc_empty();
+    let r2 = radius * radius;
+    for (var s = 0u; s < offsets[P.buckets]; s += 1u) {
+        let j = sorted[s];
+        if j == i { continue; }
+        let other = src[j];
+        let d = other.pos - p;
+        let d2 = dot(d, d);
+        if d2 <= r2 { acc = acc_add(acc, other, d, sqrt(d2), f_i, time); }
+    }
+    return acc;
+}
+
+fn gather_live_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
+    var cen = cen_empty();
+    let r2 = radius * radius;
+    for (var s = 0u; s < offsets[P.buckets]; s += 1u) {
+        let j = sorted[s];
+        if j == i { continue; }
+        let d = src[j].pos - p;
+        let d2 = dot(d, d);
+        if d2 <= r2 { cen = cen_add(cen, d, sqrt(d2)); }
+    }
+    return cen;
+}
+
 // --- the bounded query -----------------------------------------------------
 
 // Cells a query would walk at this radius.
@@ -368,8 +414,10 @@ fn grid_span(lo: vec3<i32>, hi: vec3<i32>) -> f32 {
 fn gather(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
     let lo = cell_of(p - vec3<f32>(radius));
     let hi = cell_of(p + vec3<f32>(radius));
-    if grid_span(lo, hi) > f32(P.n) {
+    let live = offsets[P.buckets];
+    if grid_span(lo, hi) > f32(live) {
         atomicAdd(&clock.wide, 1u);
+        if live < P.n { return gather_live(p, radius, i, f_i, time); }
         return gather_bruteforce(p, radius, i, f_i, time);
     }
     return gather_grid(p, radius, i, f_i, time);
@@ -379,8 +427,10 @@ fn gather(p: vec3<f32>, radius: f32, i: u32, f_i: vec3<f32>, time: f32) -> Acc {
 fn gather_centrality(p: vec3<f32>, radius: f32, i: u32) -> Cen {
     let lo = cell_of(p - vec3<f32>(radius));
     let hi = cell_of(p + vec3<f32>(radius));
-    if grid_span(lo, hi) > f32(P.n) {
+    let live = offsets[P.buckets];
+    if grid_span(lo, hi) > f32(live) {
         atomicAdd(&clock.wide, 1u);
+        if live < P.n { return gather_live_centrality(p, radius, i); }
         return gather_bruteforce_centrality(p, radius, i);
     }
     return gather_grid_centrality(p, radius, i);
@@ -559,7 +609,7 @@ fn decide_bruteforce(i: u32, b: Bird, time: f32) -> Bird {
 }
 
 @compute @workgroup_size(256)
-fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+fn prepare_decisions_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     let i = gid.x;
     if i >= P.n {
         return;
@@ -570,11 +620,24 @@ fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
         dst[i] = src[i];
         return;
     }
-    var b = alarm(src[i], time);
+    let b = alarm(src[i], time);
     if time >= b.next_decision {
-        b = decide(i, b, time);
+        // After scatter, `bucket` and `counts` are scratch space: queries only
+        // read `offsets` and `sorted`. Pack the ~10% of birds due a decision so
+        // whole warps do useful work instead of divergent, mostly idle lanes.
+        let slot = atomicAdd(&counts[0], 1u);
+        bucket[slot] = i;
     }
     dst[i] = b;
+}
+
+@compute @workgroup_size(256)
+fn decide_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if gid.x >= atomicLoad(&counts[0]) {
+        return;
+    }
+    let i = bucket[gid.x];
+    dst[i] = decide(i, dst[i], clock.time);
 }
 
 @compute @workgroup_size(256)

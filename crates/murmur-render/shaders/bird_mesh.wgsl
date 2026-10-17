@@ -7,20 +7,17 @@
 // the dihedral amplitude is this renderer's own, because the reference draws
 // dots and has no wings to rotate (`docs/model.md`).
 //
-// The bird deposits the model's *per-pixel* optical depth: the reference
-// spreads the mass `a·ρ²` over a disc of diameter `ρ`, whose peak is
-// `2a/π` (`mesh::DISC_PEAK`). Per fragment the silhouette deposits that same
-// peak, so a mesh bird is as dark per pixel as a dot bird of the same size and
-// the auto-exposure rule sees the optical depth it expects. Its *total* mass is
-// then below a disc's, because a silhouette is thinner than a disc; the
-// cross-fade carries that difference and `docs/model.md` records it.
+// A resolved bird is an opaque silhouette, not a translucent coverage disc.
+// Wing exposure is already expressed by projected geometry; applying the
+// unresolved disc's area factor again made high-resolution birds disappear.
+// At unit exposure/atmosphere the material transmits 1% of light. Distance and
+// the LOD cross-fade still attenuate its optical depth (docs/model.md).
 
 @group(0) @binding(1) var<storage, read> birds: array<Bird>;
 @group(0) @binding(2) var<storage, read> lod_lists: array<vec2<u32>>;
 
-/// The reference disc's peak optical depth per unit `a` (`mesh::DISC_PEAK`),
-/// checked by `tests/mesh_area.rs`.
-const DISC_PEAK: f32 = 0.6366198;
+/// -ln(0.01), mirrored by mesh::MESH_TAU and checked by tests/mesh_area.rs.
+const MESH_TAU: f32 = 4.6051702;
 
 struct MeshOut {
     @builtin(position) clip: vec4<f32>,
@@ -70,7 +67,7 @@ fn vs_mesh(
         0.0,
         1.0,
     );
-    out.raw = s.a * weight * DISC_PEAK;
+    out.raw = s.atmosphere * weight * MESH_TAU;
     return out;
 }
 

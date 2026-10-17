@@ -6,6 +6,42 @@
 use murmur_ref::World;
 use murmur_ref::params::DT;
 
+#[test]
+fn arriving_birds_start_with_density_appropriate_perception() {
+    let mut world = World::new(8000, 3);
+    world.clear();
+    let mut arc = murmur_ref::arc::Arc::new(15.0, 3);
+    arc.update(3.0, &mut world);
+    assert_eq!(world.len(), 4000);
+    assert!(world.radii.iter().all(|r| (1.0..1.2).contains(r)));
+    // The established oracle initial condition remains unchanged.
+    assert!(World::new(20, 3).radii.iter().all(|r| *r == 5.0));
+}
+
+#[test]
+fn arrival_is_a_continuous_flux_not_half_second_batches() {
+    for minutes in [0.5, 1.0, 15.0] {
+        let mut world = World::new(8000, 3);
+        world.clear();
+        let mut arc = murmur_ref::arc::Arc::new(minutes, 3);
+        let span = (arc.duration * 0.15).min(6.0);
+        let max_per_step = (8000.0 * 1.5 / span * DT).ceil() as usize + 2;
+        let mut previous = 0;
+        for _ in 0..((span + 0.1) / DT).ceil() as usize {
+            arc.update(DT, &mut world);
+            assert!(
+                world.len() - previous <= max_per_step,
+                "arrival jumped from {previous} to {}",
+                world.len()
+            );
+            previous = world.len();
+        }
+        assert_eq!(world.len(), 8000);
+        let mean = world.velocity.iter().copied().sum::<glam::Vec3>() / 8000.0;
+        assert!(mean.length() / murmur_ref::params::V0 > 0.99);
+    }
+}
+
 /// The RMS spread of a flock about its centroid \[m\].
 fn spread(world: &World) -> f32 {
     let n = world.len() as f32;

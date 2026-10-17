@@ -124,16 +124,14 @@ impl Grid {
             })
         };
         let words = size_of::<u32>() as u64;
-        let bucket = storage("grid: bucket", buckets as u64 * words);
+        let bucket = storage("grid: bucket", n.max(1) as u64 * words);
         let counts = storage("grid: counts", buckets as u64 * words);
         let offsets = storage("grid: offsets", (buckets as u64 + 1) * words);
         let sorted = storage("grid: sorted", n.max(1) as u64 * words);
         let block_sums = storage("grid: block sums", blocks as u64 * words);
 
-        // `offsets[buckets]` is the end of the last bucket's range: always the
-        // bird count, written once (the scan only writes the first `buckets`).
-        gpu.queue
-            .write_buffer(&offsets, buckets as u64 * words, &(n as u32).to_le_bytes());
+        // The scan writes the last offset too: the arc's live count, not its
+        // allocated capacity. Inactive slots must never enter a bucket range.
 
         let pipeline = |entry_point: &str| {
             device.create_compute_pipeline(&ComputePipelineDescriptor {

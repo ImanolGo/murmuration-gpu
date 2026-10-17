@@ -1,7 +1,9 @@
 # murmuration-gpu
 
-Starlings at dusk, on your GPU: a research-based murmuration of up to millions
-of birds, simulated and rendered in real time. Written in Rust with wgpu.
+Starlings at dusk, on your GPU: a research-inspired murmuration in Rust with
+wgpu. The interactive default is 8,000 birds; larger flocks are available for
+profiling and offline recordings, but million-bird simulation is not real-time
+on the development GPU.
 
 murmuration-gpu is the big-sky sibling of
 [murmuration](https://github.com/ImanolGo/murmuration). The terminal version
@@ -13,14 +15,18 @@ evening sky, the way a real murmuration looks from the ground.
 The shapes come from individual birds following local rules. There is no
 prerecorded animation, no choreographed outline and no leader.
 
-![An evening at the roost](docs/evening.webp)
+![Current dusk flock rendering](docs/reference-revision.png)
 
-*One evening, recorded from the app: the flock arrives from its approach
-corridor over a gold sky, displays, pours down into the reed bed as the light
-goes, and the stars come out. `scripts/evening.sh` reproduces the recording.*
+*Current 8,000-bird rendering after 30 simulated seconds, seed 1. Clouds and
+foreground are procedural. The more complex folding motion in the supplied
+reference videos is still a target, not a reproduced result.*
 
 > **Status:** early development. See [PLAN.md](PLAN.md) for the roadmap and
 > [Limitations](#limitations) for what this is and is not.
+
+[Current motion preview](docs/reference-revision.mp4) ·
+[Full-resolution view](docs/reference-revision.png) ·
+[Actual window profile](docs/window-profile-startup.txt)
 
 ## Goals
 
@@ -59,7 +65,7 @@ device, so there is no interop step to pair across GPUs.
 ## Getting started
 
 ```
-cargo run -p murmuration-gpu --release                          # a dusk flock with the default bird count
+cargo run -p murmuration-gpu --release                          # 8,000 birds, continuous arrival
 cargo run -p murmuration-gpu --release -- --birds 1000000       # one million birds
 cargo run -p murmuration-gpu --release -- --falcon              # add an autonomous falcon
 cargo run -p murmuration-gpu --release -- --seed 42             # a repeatable start
@@ -67,14 +73,16 @@ cargo run -p murmuration-gpu --release -- --arc-minutes 1 --birds 3000   # a one
 cargo run -p murmuration-gpu --release -- --no-arc              # hold the display phase
 ```
 
-The evening arc is on by default at 15 minutes: the flock arrives from its
-approach corridor, displays over the roost, pours down into the reeds as the
-light goes, and is cleared by night.
+The evening arc is on by default at 15 minutes. Birds arrive in a continuous,
+softly ramped stream over the first six seconds and join a grazing turn over
+the roost. The flock displays, descends towards the reeds as the light goes,
+and is cleared by night. `--no-arc` starts with the full flock instead.
 
 Headless tools, without opening a window:
 
 ```
 cargo run -p murmuration-gpu --release -- --bench --birds 1000000          # GPU timings per pass
+cargo run -p murmuration-gpu --release -- --bench --birds 8000 --seconds 30 --steps 100 # an actual display state
 cargo run -p murmuration-gpu --release -- --parity --birds 2000 --seed 42  # GPU vs CPU reference statistics
 cargo run -p murmuration-gpu --release -- --analyze 120 --birds 50000      # per-second flock statistics
 cargo run -p murmuration-gpu --release -- --coherence 600 --birds 100000   # long-run coherence run + verdict
@@ -111,6 +119,42 @@ At one seed the GPU output is *statistically* comparable to the CPU oracle, not
 identical: the two engines draw the random force from different generators (see
 [Limitations](#limitations)).
 
+## Measured performance
+
+**Actual windowed startup:** the instrumented release build recorded **59.11 FPS**
+over 15 s at **1268×1380**, 8,000 birds, seed 1, GTX 1650 Max-Q / NVIDIA 615.78.08 /
+Vulkan / Niri. Simulation advanced 14.995 s during 15.007 s of wall time. The
+95th-percentile frame interval was 18.879 ms. Before the startup fixes the same
+surface/count/seed showed 300–400 ms stalls. This is a measured startup run, not
+a guarantee for every configuration or a claim that the motion now matches the
+reference videos. [Profiler results](docs/window-profile-startup.txt).
+
+```fish
+prime-run cargo run -p murmuration-gpu --release -- --profile-window 15
+```
+
+The profiler closes its window after the requested interval and prints CPU frame
+spans plus GPU simulation timestamps. It performs no timing readback during
+playback. [Revised visual preview](docs/reference-revision.mp4).
+
+GPU timestamp pass totals, **GTX 1650 Max-Q, NVIDIA 615.78.08, Vulkan**
+(2026-10-17). These are headless simulation measurements: no render target or
+resolution, and **not presentation FPS**.
+
+| Birds | State | GPU time per 5 ms simulation step |
+| ---: | --- | ---: |
+| 8,000 | Actual evening, seed 1, after 30 s; 100 samples | 1.304 ms |
+| 100,000 | Synthetic scatter at 0.5 birds/m³; 40 samples | 8.905 ms |
+| 1,000,000 | Same synthetic density; 40 samples | 129.738 ms |
+| 3,000,000 | Same synthetic density; 40 samples | 429.237 ms |
+
+The simulation needs 200 steps per real second, so anything over 5 ms/step
+cannot keep real time even before rendering. Neighbour queries dominate the
+larger counts. At 100,000 birds the same live-bird benchmark was 13.762 ms
+before this revision: **35% less GPU time**, without reducing the neighbour set
+or changing the flight parameters. The actual-evening pass total excludes its
+small arc passes. Details and remaining limits are in [docs/progress.md](docs/progress.md).
+
 ## Tests
 
 ```
@@ -134,7 +178,7 @@ Planned controls:
 | `Space`        | Pause or resume                         |
 | Mouse drag     | Orbit the observer around the roost     |
 | `f`            | Spawn an autonomous falcon              |
-| Move the mouse | Steer the falcon                        |
+| Move the mouse | Steer an existing falcon (`f` first)     |
 | `+` / `-`      | Change the flock size                   |
 | `h`            | Show or hide the overlay and timings    |
 
@@ -163,7 +207,10 @@ Each frame runs a fixed-step simulation, then a render pass, on one GPU:
 ```
 
 The bird state buffer that the simulation writes is the same buffer the
-render pass reads. Nothing is copied back to the CPU during normal running.
+render pass reads. The window never reads the whole flock back: camera tracking
+asynchronously samples at most 4,096 position/velocity records (128 KiB), and
+auto-exposure consumes a small histogram without blocking. Headless analysis
+and recordings still read back full state when needed.
 
 ### Workspace
 

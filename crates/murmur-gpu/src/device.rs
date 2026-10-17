@@ -147,13 +147,23 @@ pub fn for_surface(
     surface: &Surface<'_>,
     power: PowerPreference,
 ) -> Result<Gpu, DeviceError> {
+    for_surface_with(instance, surface, power, wgpu::Features::empty())
+}
+
+/// Surface device with optional profiling features, matching headless_with.
+pub fn for_surface_with(
+    instance: &Instance,
+    surface: &Surface<'_>,
+    power: PowerPreference,
+    features: wgpu::Features,
+) -> Result<Gpu, DeviceError> {
     let adapter = pollster::block_on(instance.request_adapter(&RequestAdapterOptions {
         power_preference: power,
         compatible_surface: Some(surface),
         ..Default::default()
     }))
     .map_err(DeviceError::NoAdapter)?;
-    open(instance.clone(), adapter, wgpu::Features::empty(), power)
+    open(instance.clone(), adapter, features, power)
 }
 
 /// Requests a headless device, without a surface, for tests and benches.

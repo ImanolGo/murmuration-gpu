@@ -14,14 +14,10 @@
 //! The tips sit at `±0.2 m`, so the wingspan is exactly the `WINGSPAN = 0.4 m`
 //! the coverage pass uses to size a bird on screen.
 //!
-//! Optical depth: a bird's optical depth in the model is `a`, and the reference
-//! spreads the mass `a·ρ²` over a disc of diameter `ρ`, whose peak is
-//! `2a/π` ([`DISC_PEAK`]). The mesh deposits that same peak per fragment
-//! through its silhouette — the *per-pixel* optical depth the model's exposure
-//! rule expects, so the auto-exposure behaves as it does for a dot flock. The
-//! mesh's total mass is then smaller than a disc's (its silhouette is thinner
-//! than a disc of the same wingspan), which is what an actual bird looks like:
-//! `docs/model.md` records this and `tests/mesh_area.rs` pins the constant.
+//! Resolved silhouettes use [`MESH_TAU`], a near-opaque material. Unlike the
+//! unresolved reference disc, wing exposure comes from projected geometry, not
+//! an additional opacity multiplier. The reference disc's peak [`DISC_PEAK`]
+//! remains available for comparison. See docs/model.md for the visual revision.
 
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
@@ -32,10 +28,26 @@ use glam::Vec3;
 pub const FLAP_DIHEDRAL: f32 = 0.7;
 
 /// The reference disc's peak optical depth per unit `a`: `mass / (2πσ²)` with
-/// `mass = a·ρ²` and `σ = ρ/2`. The mesh deposits this per fragment, so a mesh
-/// bird is as dark per pixel as a dot bird of the same size. Checked against the
-/// shader's `DISC_PEAK` by `tests/mesh_area.rs`.
+/// `mass = a·ρ²` and `σ = ρ/2`. Retained for comparison with the unresolved
+/// representation; the resolved silhouette uses MESH_TAU instead.
 pub const DISC_PEAK: f32 = 2.0 / std::f32::consts::PI;
+
+/// Resolved silhouette optical depth: -ln(0.01), or 99% light absorption at
+/// unit atmosphere/exposure. Projected geometry already supplies wing exposure;
+/// multiplying it again by the unresolved disc's area factor double-counts it.
+/// This rendering adaptation is recorded in docs/model.md.
+pub const MESH_TAU: f32 = 4.6051702;
+
+/// CPU definitions of the intermediate bird's Gaussian silhouette, in units
+/// of wingspan. A thin body and narrow wing chord replace the old round blobs.
+/// Checked against impostor.wgsl by mesh_area.rs.
+pub const IMPOSTOR_SHAPE: [(&str, f32); 5] = [
+    ("BODY_AXIS", 0.18),
+    ("BODY_ACROSS", 0.06),
+    ("WING_CHORD", 0.06),
+    ("WING_SPAN", 0.13),
+    ("WING_OFFSET", 0.25),
+];
 
 /// Starling wingspan \[m\]: the tip-to-tip width of [`VERTICES`], and the same
 /// number the coverage pass sizes a bird on screen with. Checked against the

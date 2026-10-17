@@ -497,6 +497,127 @@ are the reference's own.
   sparse field in the upper half of the frame, from the reference's own hash
   (about 6 in 4096 pixels), lit as the sky darkens.
 
+## Visual revision and phase 9 work (2026-10-17)
+
+The user requested a natural, continuous arrival instead of the visibly separate
+half-second banks in phase 8. This intentionally revises the arrival **initial
+condition** in both `murmur-ref::arc` and `shaders/arc.wgsl`; it does not change
+the social forces, cruise speed, perception, banking or escape parameters.
+
+- Arrival fills over `min(6 s, 0.15 × evening duration)`. The cumulative count is
+  `floor(N × (3u² − 2u³))`, where `u` is elapsed arrival time divided by that
+  span, clamped to `[0,1]`. Births occur each integration step, with no random
+  group size or periodic half-second pause. The display boundary completes any
+  fractional last bird.
+- A shared corridor is 180–200 m from the roost (formerly 280–320 m). Its heading
+  is `−0.6 × radial + 0.8 × tangent`: a grazing approach rather than a beeline
+  through the centre. Birds are distributed uniformly across an elliptical
+  cross-section, with vertical scale 0.6 and radius
+  `max(3 m, sqrt(N / (v0 × span × π × 0.5)))`. Longitudinal jitter is ±0.5 m;
+  heading jitter remains ±0.05 horizontally and ±0.025 vertically. The
+  cross-section depends on total flux, not the number born in one frame.
+- CPU and GPU still use their documented different random streams. The arrival
+  count schedule is shared, not the individual trajectories. The old terminal
+  arrival recording is no longer the oracle for this revised initial condition;
+  the unchanged no-arc analysis baseline remains an oracle for flight behaviour.
+- The app defaults to 8,000 birds, rather than 2,000, for a fuller silhouette.
+  The ground camera's minimum vertical lens angle is 12°, rather than 6°, so
+  the first few arriving birds do not trigger an extreme close-up. Exact
+  percentile selection replaces full sorting. Window framing uses at most 4,096
+  uniformly sampled slots, copied asynchronously as 32-byte position/velocity
+  records; inactive slots are excluded and the short telemetry delay is
+  predicted from velocity (at most 0.25 s). Captures retain full-flock framing.
+- Window auto-exposure uses the same histogram and adaptation rule but consumes
+  completed readbacks without waiting. At most one request is outstanding;
+  captures keep synchronous exposure. This introduces a small observation delay,
+  not a change to the exposure target or the flock model.
+- The real-time loop retains fractional 5 ms steps. It no longer discards time
+  at ordinary refresh rates or forces a step at extremely high refresh rates.
+  Captures use this accumulator too; time-lapse samples use absolute step times
+  and update the camera with their actual simulation interval. Mouse movement
+  steers a falcon only after `f` or `--falcon`, not merely when watching.
+  Presentation uses FIFO/vsync rather than the surface's preferred Mailbox mode,
+  avoiding GPU work on frames that would be discarded between refreshes.
+- Exact simulation accelerations: decisions due on a step are compacted into
+  the grid's now-unused bucket scratch buffer before the neighbour pass. Queries
+  still read the previous flock; independent per-bird random streams and neighbour
+  accumulation order are unchanged. Cells whose AABB cannot touch the query
+  sphere are skipped conservatively, before hashing. The final grid offset is
+  computed from the actual live histogram, not the inactive buffer capacity.
+
+### Resolved-bird material correction found in the actual window
+
+The 1268×1380 window exposed a problem that 960×540 captures hid: more birds
+resolve to meshes at high pixel density, and phase 7's `2a/π` mesh material makes
+them nearly transparent. A resolved wing's projected area already changes with
+bank and wingbeat. Multiplying that silhouette's opacity by the unresolved
+disc's wing-exposure factor counts wing exposure a second time and makes the
+flock fade as it resolves.
+
+Resolved silhouettes now use a material optical depth **`MESH_TAU = −ln(0.01)`**
+(4.6051702, 99% absorption at unit atmosphere and exposure), multiplied by the
+existing distance attenuation and LOD weight, not by the disc's area term. The
+Rust definition in `mesh.rs` and the WGSL constant are checked together. This
+supersedes the phase-7 mesh material above; unresolved impostors and splats keep
+the reference's coverage law, and no simulation parameters change. The optical
+histogram still sees the material actually drawn, so dense mesh views may reach
+the exposure floor; opaque bird bodies are intentional. The cross-fade remains
+necessary because a silhouette and a Gaussian disc have different spatial mass.
+The revision rechecks the LOD sweep and records the result in `docs/progress.md`.
+
+## Startup / photographic revision after user testing
+
+The user reports roughly 2 FPS from launch and supplied `Brightons-Stunning-
+Starling-SnapYT.App.mp4` (33.8 s, 30 fps), `The-Secrets-and-SnapYT.App.mp4`
+(13.9 s, 25 fps), and three photos. The earlier headless pass timings did not
+prove acceptable windowed playback. They also did not prove the desired folded
+flock morphology. These references supersede the earlier subjective visual
+acceptance, not the unchanged no-arc mathematical oracle.
+
+- **Exact sparse search.** When the grid has inactive capacity, wide queries
+  walk its live sorted prefix, not every allocated slot. The crossover compares
+  cell count with the live count. All exact-distance tests are unchanged; the
+  fully populated fallback retains its former accumulation order. A regression
+  compares 1, 17 and 257 live birds in an 8,000-slot buffer with brute force.
+- **Density-aware arrival perception, on both engines.** A new bird no longer
+  starts at 5 m regardless of the arrival density. At arrival fraction `u`, flux
+  is `6N u(1-u)/span`, and density is flux divided by `v0 × πr² × 0.6`, where
+  `r` is the existing corridor cross-section radius. Perception starts at
+  `cbrt(n_c / (4π/3 × max(density, 0.05)))`, clamped to `[r_h, 5 m]`. The floor
+  regularises the nearly zero flux at the endpoints. At peak flux this is about
+  1.07 m, rather than scanning hundreds of neighbours until the adaptive law
+  settles. This revises arrival initial state only: `World::new`, the ongoing
+  adaptive law, reaction interval, integration step and force weights are
+  unchanged. The CPU and GPU implement the same expression.
+- **Photographic framing.** Minimum vertical FOV is 45°, nominal 55°, instead of
+  zooming to 12°. This keeps birds small and leaves sky/horizon context. The
+  window initially aims at the known approach corridor before telemetry arrives,
+  so the first bird does not cause a horizon-to-flock camera snap.
+- **Bird shape and temporal resolve.** The Gaussian impostor's body/chord are
+  narrowed, with CPU-defined silhouette coefficients checked against WGSL. Its
+  screen axes are orthogonal: independently normalised projected 3D axes could
+  become parallel, producing broad streaks and breaking Gaussian mass
+  normalisation. Temporal history is shortened from 100 to 35 ms to reduce
+  smearing of moving silhouettes. LOD transitions must be remeasured.
+- **Sky and foreground.** `atmosphere.rs` is the CPU oracle for world-direction
+  cloud layers, low-sun glow and a distant horizon. A real GPU pixel test checks
+  it against `atmosphere.wgsl`. The original palette remains the base. Display
+  lighting starts at evening 0.30 and maps the arc's brightness into `[0.30,1]`;
+  the simulation's evening clock is unchanged. Reeds now occupy world bearings
+  and elevations at three distances with tapered, bent stems, leaves and seed
+  heads. They replace the repeating two-pixel screen columns, do not enter the
+  flock histogram, and use the existing visibility gate. This is procedural
+  scenery, not a physically validated atmosphere or vegetation model.
+- **Window profiler.** `--profile-window SECONDS` runs the real surface path,
+  traces CPU submission/acquisition/presentation and timestamps each entire GPU
+  simulation batch. Timestamp history is mapped only after playback. FPS from
+  this instrumented window is distinct from isolated headless pass timings.
+- **Distant static control.** Its view now scales `tan(fov/2)`, not the angle
+  itself: multiplying the new 45° minimum by four made a degenerate 180° camera
+  and an invisible flock. Static comparison exposure is held fixed so exposure
+  adaptation cannot be misreported as shimmer. A unit test checks the exact
+  focal-length ratio and finite projection.
+
 ## Known gaps (reported, not hidden)
 
 Carried over from the reference and not fixed here (fixing them would change the

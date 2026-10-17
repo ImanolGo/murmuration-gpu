@@ -29,6 +29,31 @@ fn live(birds: &[murmur_gpu::bird::Bird]) -> usize {
 }
 
 #[test]
+fn arriving_count_follows_the_continuous_reference_schedule() {
+    let Some(gpu) = open() else { return };
+    let mut sim = Sim::new(&gpu, Params::new(2000, 3));
+    sim.enable_arc(&gpu, 1.0, 3);
+    let mut previous = 0;
+    for _ in 0..24 {
+        sim.advance_seconds(&gpu, 0.25).unwrap();
+        let count = live(&sim.read_birds(&gpu).unwrap());
+        let u = (sim.time() / 6.0).clamp(0.0, 1.0);
+        let expected = (2000.0 * u * u * (3.0 - 2.0 * u)).floor() as usize;
+        assert!(
+            count.abs_diff(expected) <= 2,
+            "count {count}, expected {expected}"
+        );
+        assert!(
+            count - previous <= 127,
+            "a batch arrived: {previous} -> {count}"
+        );
+        previous = count;
+    }
+    sim.advance_seconds(&gpu, 0.1).unwrap();
+    assert_eq!(live(&sim.read_birds(&gpu).unwrap()), 2000);
+}
+
+#[test]
 fn an_evening_runs_through_its_phases() {
     let Some(gpu) = open() else {
         return;

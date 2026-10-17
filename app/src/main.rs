@@ -44,6 +44,7 @@ use murmur_render::camera::{Camera, FlockView};
 use murmur_render::mesh::WINGSPAN;
 use murmur_render::png;
 use murmur_render::renderer::{LOD_LEVELS, Renderer as FrameRenderer, Scene, TIMESTAMP_SLOTS};
+use murmur_render::tracking::FlockTracker;
 use winit::{
     application::ApplicationHandler,
     dpi::LogicalSize,
@@ -53,6 +54,8 @@ use winit::{
     window::{Window, WindowId},
 };
 
+mod window_profile;
+
 /// The command line. Hand-rolled for now; PLAN.md phase 8 moves the app to a
 /// `clap` CLI matching the terminal version.
 #[derive(Debug, Clone)]
@@ -61,6 +64,7 @@ struct Args {
     parity: bool,
     /// Run the headless per-pass benchmark instead of the window.
     bench: bool,
+    profile_window: Option<f32>,
     /// Run the headless `--analyze` for this many simulated seconds.
     analyze: Option<f32>,
     /// Print the extended statistics line each second under `--analyze`.
@@ -103,6 +107,7 @@ struct Args {
     seed: u64,
     /// Simulated seconds per seed.
     seconds: u32,
+    seconds_given: bool,
     /// Number of seeds.
     seeds: u32,
     /// Timed steps per bird count in `--bench`.
@@ -114,6 +119,7 @@ impl Default for Args {
         Self {
             parity: false,
             bench: false,
+            profile_window: None,
             analyze: None,
             extended: false,
             coherence: None,
@@ -129,10 +135,11 @@ impl Default for Args {
             frames: 120,
             zoom: CAPTURE_ZOOM,
             turning: Turning::Base,
-            birds: 2000,
+            birds: 8000,
             birds_given: false,
             seed: 1,
             seconds: 60,
+            seconds_given: false,
             seeds: 5,
             steps: 10,
         }
@@ -146,6 +153,13 @@ fn parse_args() -> Result<Args, String> {
         match arg.as_str() {
             "--parity" => args.parity = true,
             "--bench" => args.bench = true,
+            "--profile-window" => {
+                let seconds: f32 = value(&mut it, "--profile-window")?.parse().map_err(err)?;
+                if !seconds.is_finite() || seconds <= 0.0 {
+                    return Err("--profile-window needs positive finite seconds".into());
+                }
+                args.profile_window = Some(seconds);
+            }
             "--analyze" => {
                 args.analyze = Some(value(&mut it, "--analyze")?.parse().map_err(err)?);
             }
@@ -184,7 +198,10 @@ fn parse_args() -> Result<Args, String> {
                 args.birds_given = true;
             }
             "--seed" => args.seed = value(&mut it, "--seed")?.parse().map_err(err)?,
-            "--seconds" => args.seconds = value(&mut it, "--seconds")?.parse().map_err(err)?,
+            "--seconds" => {
+                args.seconds = value(&mut it, "--seconds")?.parse().map_err(err)?;
+                args.seconds_given = true;
+            }
             "--seeds" => args.seeds = value(&mut it, "--seeds")?.parse().map_err(err)?,
             "--steps" => args.steps = value(&mut it, "--steps")?.parse().map_err(err)?,
             "-h" | "--help" => {
@@ -193,7 +210,8 @@ fn parse_args() -> Result<Args, String> {
                      --coherence SECONDS | --still PATH | --capture DIR | \
                      --record DIR | --lod-sweep | --agitation] [--birds N] [--seed S] [--seconds T] \
                      [--seeds K] [--steps N] [--frames N] [--zoom F] [--falcon] \
-                     [--zigzag-k K] [--extended] [--turning base|inertial]"
+                     [--zigzag-k K] [--extended] [--turning base|inertial] \
+                     [--no-arc] [--arc-minutes M] [--profile-window SECONDS]"
                 );
                 std::process::exit(0);
             }
@@ -292,7 +310,26 @@ fn run_bench(args: &Args) -> Result<(), Box<dyn Error>> {
         vec![100_000, 1_000_000, 3_000_000]
     };
     for birds in counts {
-        let report = bench::run(&gpu, birds, args.steps);
+        let report = if args.seconds_given {
+            println!(
+                "# actual flock at {} s, seed {}, arc {}; optional arc/falcon passes excluded",
+                args.seconds, args.seed, !args.no_arc
+            );
+            let mut world = World::new_density_scaled(birds, args.seed);
+            world.turning = args.turning;
+            let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+            if !args.no_arc {
+                sim.enable_arc(&gpu, args.arc_minutes, args.seed);
+            }
+            if args.falcon {
+                sim.spawn_falcon(&gpu, args.seed, world.z0);
+            }
+            sim.advance_seconds(&gpu, args.seconds as f32)?;
+            bench::run_sim(&gpu, &mut sim, args.steps)
+        } else {
+            println!("# synthetic scatter, density 0.5 birds/m^3");
+            bench::run(&gpu, birds, args.steps)
+        };
         println!(
             "# {} birds, {} timed steps (after warm-up)",
             report.birds, report.steps
@@ -739,9 +776,8 @@ fn run_capture(args: &Args, dir: &str, seconds: f32) -> Result<(), Box<dyn Error
         info.name, info.backend, info.device_type, info.driver, info.driver_info
     );
     println!(
-        "# the moving flock steps six integration steps (0.03 s) per frame, played back at \
-         30 fps; the lens zooms 1.00 -> {:.2}, so every bird grows {:.1}x and \
-         crosses every LOD threshold in view",
+        "# the moving flock advances at 30 fps with fractional steps retained; \
+         the lens zooms 1.00 -> {:.2} (growth {:.1}x)",
         args.zoom,
         1.0 / args.zoom
     );
@@ -783,17 +819,23 @@ fn run_capture(args: &Args, dir: &str, seconds: f32) -> Result<(), Box<dyn Error
         reports.push(report);
     }
 
-    let ratio = |with: &CaptureReport, without: &CaptureReport| {
-        CaptureReport::mean(&with.diffs) / CaptureReport::mean(&without.diffs).max(1e-6)
-    };
-    println!(
-        "# temporal accumulation removes {:.0}% of the in-motion change ({:.2}x) and {:.0}% of \
-         the static flock's sub-pixel change ({:.2}x)",
-        100.0 * (1.0 - ratio(&reports[0], &reports[1])),
-        ratio(&reports[0], &reports[1]),
-        100.0 * (1.0 - ratio(&reports[2], &reports[3])),
-        ratio(&reports[2], &reports[3]),
-    );
+    for (name, with, without) in [
+        ("in-motion", &reports[0], &reports[1]),
+        ("static", &reports[2], &reports[3]),
+    ] {
+        let raw = CaptureReport::mean(&without.diffs);
+        if raw <= 1e-6 {
+            println!(
+                "# {name}: no raw change to compare (possibly an empty flock); reduction unmeasured"
+            );
+        } else {
+            let ratio = CaptureReport::mean(&with.diffs) / raw;
+            println!(
+                "# temporal accumulation removes {:.0}% of the {name} change ({ratio:.2}x)",
+                100.0 * (1.0 - ratio)
+            );
+        }
+    }
     println!(
         "# {} frames written to {dir} in {:.0}s",
         args.frames,
@@ -813,9 +855,6 @@ fn capture_pass(
     const WIDTH: u32 = 960;
     const HEIGHT: u32 = 540;
     const DT: f32 = 1.0 / 30.0;
-    // One frame of the recording is six integration steps (0.03 s), played back
-    // at 30 fps.
-    const STEPS: u32 = 6;
     // The static flock is framed this many times wider, so its birds are
     // sub-pixel: a distant flock.
     const DISTANT: f32 = 4.0;
@@ -880,21 +919,26 @@ fn capture_pass(
     };
     // The static pass looks at the same flock from the same camera, four times
     // wider, with the lens and everything else fixed.
-    let mut frozen_scene = {
+    let frozen_scene = {
         let mut frozen = scene;
-        frozen.fov *= DISTANT;
+        frozen.fov = murmur_render::camera::scaled_fov(frozen.fov, DISTANT);
         frozen
     };
     let mut previous: Option<Vec<u8>> = None;
+    if pass.frozen {
+        renderer.reset_history();
+    }
+    let mut clock = FrameClock::default();
     for frame in 0..frames {
         if pass.frozen {
             // Nothing moves: the same flock, the same camera, the same lens. What
             // is left between frames is the jitter's sampling of sub-pixel
             // shapes.
-            frozen_scene.exposure = renderer.exposure();
+            // A frozen control must not drift in exposure while measuring
+            // jitter. The renderer may adapt internally; keep this scene fixed.
             scene = frozen_scene;
         } else {
-            sim.advance(gpu, STEPS);
+            sim.advance(gpu, clock.steps(DT, sim.params.dt));
             let birds = sim.read_birds(gpu)?;
             let (positions, velocities) = flock_view(&birds);
             camera.update(
@@ -929,6 +973,7 @@ fn capture_pass(
             scene.fov *= 1.0 - (1.0 - args.zoom) * t;
         }
         renderer.set_scene(gpu, scene);
+        renderer.set_birds(gpu, sim.bird_buffer(), sim.len() as u32);
         renderer.set_history_weight(if pass.taa { None } else { Some(1.0) });
         renderer.render(gpu, &target.view, sim.len() as u32, DT);
         let counts = renderer.lod_counts(gpu);
@@ -1032,6 +1077,7 @@ fn run_lod_sweep(args: &Args) -> Result<(), Box<dyn Error>> {
     let evening = world.evening();
 
     let mut bird = Bird::zeroed();
+    bird.live = 1;
     bird.flap_amp = 1.0;
     bird.vel = (across * 8.0).to_array();
     let buffer = gpu.device.create_buffer(&wgpu::BufferDescriptor {
@@ -1127,6 +1173,9 @@ fn run_lod_sweep(args: &Args) -> Result<(), Box<dyn Error>> {
     } else {
         mesh_below.sparkle
     };
+    if rows.iter().all(|r| r.ink <= 0.0) || !rows.last().is_some_and(|r| r.tag.contains('m')) {
+        return Err("LOD sweep drew no visible mesh bird; cannot measure transitions".into());
+    }
     let splat_worst = worst_step(&rows, splat - RHO_STEP, splat + RHO_STEP);
     let splat_above = worst_step(&rows, splat + RHO_STEP, splat + CONTROL + RHO_STEP);
     let splat_below = worst_step(&rows, RHO_MIN, splat - RHO_STEP);
@@ -1193,6 +1242,9 @@ fn run_lod_sweep(args: &Args) -> Result<(), Box<dyn Error>> {
         mesh_hi - mesh_lo,
         (mesh_hi - mesh_lo) / RHO_STEP,
     );
+    if mesh_worst.diff > JUMP * control || splat_worst.diff > JUMP * splat_control {
+        return Err("LOD transition exceeds the measured growth control".into());
+    }
     Ok(())
 }
 
@@ -1233,7 +1285,6 @@ fn worst_step(rows: &[SweepRow], lo: f32, hi: f32) -> Step {
 fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
     const WIDTH: u32 = 960;
     const HEIGHT: u32 = 540;
-    const DT: f32 = 1.0 / 30.0;
     if args.no_arc {
         return Err("--record needs the evening arc; drop --no-arc".into());
     }
@@ -1269,7 +1320,11 @@ fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
     let mut scene;
 
     for frame in 0..frames {
-        sim.advance_seconds(&gpu, per_frame)?;
+        // Absolute sample times prevent per-frame truncation from shortening
+        // the evening. Sample bin centres, never the next evening's first step.
+        let target_step = (((frame as f32 + 0.5) * per_frame) / sim.params.dt).round() as u32;
+        let steps = target_step.saturating_sub(sim.steps_taken());
+        sim.advance_steps_bounded(&gpu, steps)?;
         let birds = sim.read_birds(&gpu)?;
         let (positions, velocities) = flock_view(&birds);
         camera.update(
@@ -1278,7 +1333,7 @@ fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
                 velocities: &velocities,
                 time: sim.time(),
             },
-            DT,
+            per_frame,
             WIDTH as f32 / HEIGHT as f32,
         );
         let falcon = if sim.falcon_active() {
@@ -1299,7 +1354,8 @@ fn run_record(args: &Args, dir: &str) -> Result<(), Box<dyn Error>> {
         .with_reeds(murmur_render::sky::reed_visibility(&camera));
         let evening = scene.evening;
         renderer.set_scene(&gpu, scene);
-        renderer.render(&gpu, &target.view, sim.len() as u32, DT);
+        renderer.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
+        renderer.render(&gpu, &target.view, sim.len() as u32, per_frame);
         let rgba = renderer.read_target(&gpu, &target, WIDTH, HEIGHT);
         let rgb: Vec<u8> = rgba
             .as_chunks::<4>()
@@ -1401,7 +1457,9 @@ fn evening_of(args: &Args, time: f32) -> f32 {
     }
     let mut arc = murmur_ref::arc::Arc::new(args.arc_minutes, args.seed);
     arc.time = time % arc.duration;
-    arc.evening()
+    // Arrival is already late afternoon, not a flat bright-yellow daylight sky.
+    // This is a presentation remap; the reference evening clock is unchanged.
+    0.30 + arc.evening() * 0.70
 }
 
 fn main() {
@@ -1503,6 +1561,7 @@ struct Renderer {
     sim: Sim,
     frame: FrameRenderer,
     camera: Camera,
+    tracker: FlockTracker,
     birds: usize,
     /// The run's seed and preferred height, for a window-spawned falcon.
     seed: u64,
@@ -1511,11 +1570,37 @@ struct Renderer {
     args: Args,
     /// Wall clock of the previous frame, so the flock steps in real time.
     last: Instant,
+    clock: FrameClock,
+    profile: Option<window_profile::Profile>,
+    profile_done: bool,
 }
 
 /// The largest catch-up the window will simulate in one frame, so a stall does
 /// not turn into one enormous submission.
 const MAX_FRAME_STEPS: u32 = 40;
+
+/// Keep the fractional integration step between frames. Rounding down each
+/// frame loses 10% of real time at 60 Hz; forcing a step runs too fast above 200 Hz.
+#[derive(Default)]
+struct FrameClock {
+    remainder: f64,
+}
+
+impl FrameClock {
+    fn steps(&mut self, elapsed: f32, step: f32) -> u32 {
+        let step = f64::from(step);
+        self.remainder += f64::from(elapsed.clamp(0.0, 0.25));
+        let due = ((self.remainder + 1e-9) / step).floor() as u32;
+        let steps = due.min(MAX_FRAME_STEPS);
+        self.remainder -= f64::from(steps) * step;
+        // Drop an unrenderable backlog after a long stall, never the normal
+        // fractional remainder. Do not spiral into ever larger submissions.
+        if due > MAX_FRAME_STEPS {
+            self.remainder %= step;
+        }
+        steps
+    }
+}
 
 /// How far the `--capture` lens zooms in over the recording: the framing field
 /// of view is scaled by this at the last frame, so the flock grows and every
@@ -1538,7 +1623,16 @@ impl Renderer {
                 Box::new(event_loop.owned_display_handle()),
             ));
         let surface = instance.create_surface(window.clone())?;
-        let gpu = device::for_surface(&instance, &surface, wgpu::PowerPreference::HighPerformance)?;
+        let gpu = device::for_surface_with(
+            &instance,
+            &surface,
+            wgpu::PowerPreference::HighPerformance,
+            if args.profile_window.is_some() {
+                wgpu::Features::TIMESTAMP_QUERY | wgpu::Features::TIMESTAMP_QUERY_INSIDE_ENCODERS
+            } else {
+                wgpu::Features::empty()
+            },
+        )?;
 
         let info = gpu.info();
         println!(
@@ -1551,11 +1645,21 @@ impl Renderer {
             .get_default_config(&gpu.adapter, size.width, size.height)
             .ok_or("the adapter cannot present to this window")?;
         config.usage |= wgpu::TextureUsages::RENDER_ATTACHMENT;
+        // This is a watching experience, not a latency race. Mailbox can render
+        // hundreds of discarded frames; FIFO paces work to the display without
+        // tearing and leaves GPU time for the fixed-step flight model.
+        config.present_mode = wgpu::PresentMode::Fifo;
         surface.configure(&gpu.device, &config);
         println!(
             "murmuration-gpu: surface {}x{} {:?}, present mode {:?}",
             config.width, config.height, config.format, config.present_mode
         );
+        if let Some(seconds) = args.profile_window {
+            println!(
+                "# window profile: birds={} seed={} seconds={seconds} arc={}",
+                args.birds, args.seed, !args.no_arc
+            );
+        }
 
         let mut world = World::new_density_scaled(args.birds, args.seed);
         world.turning = args.turning;
@@ -1568,8 +1672,25 @@ impl Renderer {
         }
 
         let mut frame = FrameRenderer::new(&gpu, config.width, config.height, config.format)?;
+        frame.set_async_exposure(true);
         frame.set_birds(&gpu, sim.bird_buffer(), sim.len() as u32);
 
+        let tracker = FlockTracker::new(&gpu);
+        let mut camera = Camera::new();
+        let initial_target = if args.no_arc {
+            world.position.iter().copied().sum::<Vec3>() / world.len().max(1) as f32
+        } else {
+            let arrival = murmur_gpu::arc::ArcState::new(args.arc_minutes, args.seed, world.z0);
+            Vec3::new(
+                arrival.bearing.cos() * arrival.radius,
+                arrival.bearing.sin() * arrival.radius,
+                world.z0,
+            )
+        };
+        camera.look_at(initial_target);
+        let profile = args
+            .profile_window
+            .map(|seconds| window_profile::Profile::new(&gpu, seconds));
         Ok(Self {
             window,
             gpu,
@@ -1577,9 +1698,13 @@ impl Renderer {
             config,
             sim,
             frame,
-            camera: Camera::new(),
+            camera,
+            tracker,
             birds: args.birds,
             last: Instant::now(),
+            clock: FrameClock::default(),
+            profile,
+            profile_done: false,
             seed: args.seed,
             z0: world.z0,
             args: args.clone(),
@@ -1600,6 +1725,8 @@ impl Renderer {
 
     /// Clears the frame to the dusk colour and presents it.
     fn render(&mut self) -> Result<(), Box<dyn Error>> {
+        let mut spans = [0.0; 7];
+        let mut mark = Instant::now();
         let frame = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(frame) => frame,
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
@@ -1634,31 +1761,45 @@ impl Renderer {
                 return Ok(());
             }
         };
+        spans[0] = mark.elapsed().as_secs_f64() * 1000.0;
 
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Step the flock in real time, then let the camera frame it. The GPU
-        // readback drives the camera for now; phase 9 removes the round-trip.
+        // Step in real time and consume only telemetry already available. Never
+        // wait for the entire flock to cross back to the CPU to aim the camera.
         let now = Instant::now();
-        let dt = (now - self.last).as_secs_f32().clamp(1e-3, 0.25);
+        let dt = (now - self.last).as_secs_f32().clamp(0.0, 0.25);
         self.last = now;
-        let steps = ((dt / self.sim.params.dt) as u32).clamp(1, MAX_FRAME_STEPS);
-        self.sim.advance(&self.gpu, steps);
+        let steps = self.clock.steps(dt, self.sim.params.dt);
+        mark = Instant::now();
+        if let Some(profile) = &self.profile {
+            profile.advance(&self.gpu, &mut self.sim, steps);
+        } else {
+            self.sim.advance(&self.gpu, steps);
+        }
+        spans[1] = mark.elapsed().as_secs_f64() * 1000.0;
 
-        let birds = self.sim.read_birds(&self.gpu)?;
-        let (positions, velocities) = flock_view(&birds);
+        mark = Instant::now();
+        self.tracker.refresh(&self.gpu)?;
+        spans[2] = mark.elapsed().as_secs_f64() * 1000.0;
+        mark = Instant::now();
+        let positions = self.tracker.predicted_positions(self.sim.time());
         let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
         self.camera.update(
             &FlockView {
                 positions: &positions,
-                velocities: &velocities,
+                velocities: self.tracker.velocities(),
                 time: self.sim.time(),
             },
             dt,
             aspect,
         );
+        spans[3] = mark.elapsed().as_secs_f64() * 1000.0;
+        mark = Instant::now();
+        self.tracker
+            .request(&self.gpu, self.sim.bird_buffer(), self.sim.time());
 
         // The bird buffer ping-pongs each step, so re-point the coverage pass.
         self.frame
@@ -1682,10 +1823,24 @@ impl Renderer {
             .with_falcon(falcon)
             .with_reeds(murmur_render::sky::reed_visibility(&self.camera)),
         );
+        spans[4] = mark.elapsed().as_secs_f64() * 1000.0;
+        mark = Instant::now();
         self.frame.render(&self.gpu, &view, self.birds as u32, dt);
+        spans[5] = mark.elapsed().as_secs_f64() * 1000.0;
 
+        mark = Instant::now();
         self.window.pre_present_notify();
         self.gpu.queue.present(frame);
+        spans[6] = mark.elapsed().as_secs_f64() * 1000.0;
+        if let Some(profile) = &mut self.profile
+            && profile.record(spans, steps)
+        {
+            profile.report(&self.gpu, self.sim.time());
+            if let Some(times) = self.frame.frame_times_ms(&self.gpu) {
+                println!("# final-frame GPU render {}", timing_line(&times));
+            }
+            self.profile_done = true;
+        }
         self.window.request_redraw();
         Ok(())
     }
@@ -1713,7 +1868,14 @@ impl ApplicationHandler for App {
             return;
         };
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                if !renderer.profile_done
+                    && let Some(profile) = &renderer.profile
+                {
+                    profile.report(&renderer.gpu, renderer.sim.time());
+                }
+                event_loop.exit();
+            }
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
@@ -1730,18 +1892,16 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                // Moving the mouse makes you the falcon, spawning one on the
-                // first movement (the terminal version's behaviour).
+                // Watching should not accidentally summon a predator. Press f
+                // (or use --falcon) first, then move the mouse to steer it.
                 if !renderer.sim.falcon_active() {
-                    renderer
-                        .sim
-                        .spawn_falcon(&renderer.gpu, renderer.seed, renderer.z0);
+                    return;
                 }
-                let flock = World::restore(&renderer.sim.snapshot(&renderer.gpu));
-                let plane = if flock.position.is_empty() {
+                let positions = renderer.tracker.predicted_positions(renderer.sim.time());
+                let plane = if positions.is_empty() {
                     glam::Vec3::Z * renderer.z0
                 } else {
-                    flock.position.iter().copied().sum::<glam::Vec3>() / flock.position.len() as f32
+                    positions.iter().copied().sum::<glam::Vec3>() / positions.len() as f32
                 };
                 let target = renderer.camera.cursor_to_plane(
                     position.x as f32,
@@ -1759,8 +1919,40 @@ impl ApplicationHandler for App {
                     eprintln!("murmuration-gpu: rendering failed: {err}");
                     event_loop.exit();
                 }
+                if renderer.profile_done {
+                    event_loop.exit();
+                }
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_clock_keeps_real_time_at_different_refresh_rates() {
+        for hz in [30, 60, 120, 144, 240, 1000] {
+            let mut clock = FrameClock::default();
+            let steps: u32 = (0..hz * 10)
+                .map(|_| clock.steps(1.0 / hz as f32, 0.005))
+                .sum();
+            assert!(
+                (1999..=2000).contains(&steps),
+                "{hz} Hz: {steps} steps in 10s"
+            );
+            assert!(clock.remainder >= -1e-8 && clock.remainder < 0.005);
+        }
+    }
+
+    #[test]
+    fn the_clock_bounds_stalls_without_forcing_steps() {
+        let mut clock = FrameClock::default();
+        assert_eq!(clock.steps(0.0, 0.005), 0);
+        assert_eq!(clock.steps(3.0, 0.005), MAX_FRAME_STEPS);
+        assert!(clock.remainder < 0.005);
+        assert_eq!(clock.steps(0.0, 0.005), 0);
     }
 }

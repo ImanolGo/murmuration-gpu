@@ -1,11 +1,8 @@
 //! The mesh's geometry and its optical-depth constant.
 //!
-//! The mesh deposits the model's *per-pixel* optical depth, `2a/π` — the
-//! reference disc's peak — so a mesh bird is as dark per pixel as a dot bird of
-//! the same size and the auto-exposure rule sees the optical depth it expects.
-//! That constant is compared here against the shader's, so the two cannot drift.
-//! The mean projected area is also measured: it is how much thinner than a disc
-//! the silhouette is, which is why a mesh bird's *total* ink is lower.
+//! Resolved silhouettes use a near-opaque material; wing exposure comes from
+//! their projected area. The CPU optical-depth definition is checked against
+//! the shader, and the geometry's mean area is still independently measured.
 
 use murmur_render::mesh;
 
@@ -27,15 +24,36 @@ fn shader_constant(name: &str) -> f32 {
 }
 
 #[test]
-fn the_shader_deposits_the_reference_disc_peak() {
-    let shader = shader_constant("DISC_PEAK");
+fn the_resolved_silhouette_material_matches_the_cpu_definition() {
+    let shader = shader_constant("MESH_TAU");
     assert!(
-        (shader - mesh::DISC_PEAK).abs() < 1e-5,
-        "bird_mesh.wgsl says DISC_PEAK = {shader}, the model's disc peak is {}",
-        mesh::DISC_PEAK
+        (shader - mesh::MESH_TAU).abs() < 1e-5,
+        "shader MESH_TAU {shader}, CPU {}",
+        mesh::MESH_TAU
     );
+    assert!(((-mesh::MESH_TAU).exp() - 0.01).abs() < 1e-6);
     // `mass / (2 pi sigma^2)` with `mass = a rho^2` and `sigma = rho / 2`.
     assert!((mesh::DISC_PEAK - 2.0 / std::f32::consts::PI).abs() < 1e-6);
+}
+
+#[test]
+fn intermediate_silhouette_matches_the_cpu_definition() {
+    let source = include_str!("../shaders/impostor.wgsl");
+    for (name, expected) in mesh::IMPOSTOR_SHAPE {
+        let line = source
+            .lines()
+            .find(|l| l.trim_start().starts_with(&format!("const {name}:")))
+            .unwrap();
+        let value: f32 = line
+            .split('=')
+            .nth(1)
+            .unwrap()
+            .trim()
+            .trim_end_matches(';')
+            .parse()
+            .unwrap();
+        assert!((value - expected).abs() < 1e-6, "{name}");
+    }
 }
 
 #[test]

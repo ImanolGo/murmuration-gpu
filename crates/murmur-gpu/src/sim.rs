@@ -97,6 +97,7 @@ pub struct Sim {
     readback: Buffer,
     bind_groups: [BindGroup; 2],
     decide: ComputePipeline,
+    prepare_decisions: ComputePipeline,
     decide_bruteforce: ComputePipeline,
     integrate: ComputePipeline,
     tick: ComputePipeline,
@@ -202,6 +203,7 @@ impl Sim {
             })
         };
         let decide = pipeline("decide_kernel");
+        let prepare_decisions = pipeline("prepare_decisions_kernel");
         let decide_bruteforce = pipeline("decide_bruteforce_kernel");
         let integrate = pipeline("integrate_kernel");
         let tick = pipeline("tick_kernel");
@@ -349,6 +351,7 @@ impl Sim {
             readback,
             bind_groups,
             decide,
+            prepare_decisions,
             decide_bruteforce,
             integrate,
             tick,
@@ -416,6 +419,11 @@ impl Sim {
         self.time
     }
 
+    /// Exact integration step index, without floating-point clock drift.
+    pub fn steps_taken(&self) -> u32 {
+        self.step
+    }
+
     /// The storage buffer holding the flock's current state, so the renderer
     /// can draw the birds without a host round-trip.
     pub fn bird_buffer(&self) -> &Buffer {
@@ -438,7 +446,7 @@ impl Sim {
     }
 
     /// Starts an evening of `minutes` minutes (`world.rs::enable_arc`): the
-    /// flock is cleared and the arc spawns arriving groups into the free slots.
+    /// flock is cleared and the arc streams arriving birds into the free slots.
     pub fn enable_arc(&mut self, gpu: &Gpu, minutes: f32, seed: u64) {
         let z0 = self.params.z0;
         // The reference clears the flock, so every slot starts empty.
@@ -490,7 +498,20 @@ impl Sim {
 
     /// Encodes and submits `steps` integration steps in one command buffer.
     pub fn advance(&mut self, gpu: &Gpu, steps: u32) {
-        self.run(gpu, steps, false);
+        self.run(gpu, steps, false, None);
+    }
+
+    /// Whole-batch GPU timestamp span for the window profiler. No readback or
+    /// wait is performed here; results are resolved into a caller-owned history.
+    pub fn advance_profiled(
+        &mut self,
+        gpu: &Gpu,
+        steps: u32,
+        queries: &QuerySet,
+        history: &Buffer,
+        offset: u64,
+    ) {
+        self.run(gpu, steps, false, Some((queries, history, offset)));
     }
 
     /// Advances the flock by `seconds` of simulated time, submitting in short
@@ -507,6 +528,11 @@ impl Sim {
     /// instead of freezing.
     pub fn advance_seconds(&mut self, gpu: &Gpu, seconds: f32) -> Result<(), Stalled> {
         let steps = (seconds / self.params.dt).max(0.0) as u32;
+        self.advance_steps_bounded(gpu, steps)
+    }
+
+    /// Like `advance_seconds`, but preserves an exact integer recording timeline.
+    pub fn advance_steps_bounded(&mut self, gpu: &Gpu, steps: u32) -> Result<(), Stalled> {
         let mut done = 0;
         while done < steps {
             let this = 10.min(steps - done);
@@ -520,7 +546,7 @@ impl Sim {
     /// The same loop with the brute-force neighbour search, for the phase 3
     /// acceptance test (the grid is not rebuilt).
     pub fn advance_bruteforce(&mut self, gpu: &Gpu, steps: u32) {
-        self.run(gpu, steps, true);
+        self.run(gpu, steps, true, None);
     }
 
     /// Runs exactly one step with every pass stamped into `query_set`, for
@@ -551,8 +577,14 @@ impl Sim {
         gpu.queue.submit(Some(encoder.finish()));
     }
 
-    fn run(&mut self, gpu: &Gpu, steps: u32, bruteforce: bool) {
-        if steps == 0 {
+    fn run(
+        &mut self,
+        gpu: &Gpu,
+        steps: u32,
+        bruteforce: bool,
+        probe: Option<(&QuerySet, &Buffer, u64)>,
+    ) {
+        if steps == 0 && probe.is_none() {
             return;
         }
         let mut encoder = gpu
@@ -561,9 +593,16 @@ impl Sim {
                 label: Some("sim: step"),
             });
         let mut timeline = None;
+        if let Some((queries, _, _)) = probe {
+            encoder.write_timestamp(queries, 0);
+        }
         for _ in 0..steps {
             self.record_step(&mut encoder, bruteforce, &mut timeline);
             self.cur ^= 1;
+        }
+        if let Some((queries, history, offset)) = probe {
+            encoder.write_timestamp(queries, 1);
+            encoder.resolve_query_set(queries, 0..2, history, offset);
         }
         gpu.queue.submit(Some(encoder.finish()));
         self.time += steps as f32 * self.params.dt;
@@ -602,6 +641,14 @@ impl Sim {
         }
         if !bruteforce {
             self.grid.record(encoder, bind_group, self.n, timeline);
+            encoder.clear_buffer(&self.grid.counts, 0, Some(4));
+            dispatch(
+                encoder,
+                &self.prepare_decisions,
+                bind_group,
+                workgroups,
+                timeline.as_mut(),
+            );
         }
         let decide = if bruteforce {
             &self.decide_bruteforce

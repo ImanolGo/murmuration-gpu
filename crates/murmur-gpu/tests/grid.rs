@@ -75,6 +75,87 @@ fn scan_and_sort_match_the_cpu() {
     }
 }
 
+#[test]
+fn the_last_bucket_ends_at_the_live_count_not_capacity() {
+    let Some(gpu) = gpu_or_skip() else { return };
+    let world = World::new(2000, 17);
+    let mut sim = Sim::from_snapshot(&gpu, &world.snapshot());
+    let mut birds = sim.read_birds(&gpu).unwrap();
+    for (i, bird) in birds.iter_mut().enumerate() {
+        bird.live = u32::from(i % 3 == 0);
+    }
+    sim.write_birds(&gpu, &birds);
+    sim.rebuild_grid(&gpu);
+    let offsets = sim.grid.read_offsets(&gpu);
+    assert_eq!(
+        *offsets.last().unwrap(),
+        birds.iter().filter(|b| b.live != 0).count() as u32
+    );
+}
+
+#[test]
+fn compacted_decisions_preserve_inactive_and_not_due_birds() {
+    let Some(gpu) = gpu_or_skip() else { return };
+    let world = World::new(513, 8);
+    let mut grid = Sim::from_snapshot(&gpu, &world.snapshot());
+    let mut brute = Sim::from_snapshot(&gpu, &world.snapshot());
+    let mut birds = grid.read_birds(&gpu).unwrap();
+    for (i, b) in birds.iter_mut().enumerate() {
+        b.live = u32::from(i % 5 != 0);
+        b.next_decision = if i % 3 == 0 { 0.0 } else { 10.0 };
+    }
+    grid.write_birds(&gpu, &birds);
+    brute.write_birds(&gpu, &birds);
+    grid.advance(&gpu, 1);
+    brute.advance_bruteforce(&gpu, 1);
+    let from_grid = grid.read_birds(&gpu).unwrap();
+    let from_brute = brute.read_birds(&gpu).unwrap();
+    for ((g, b), before) in from_grid.iter().zip(&from_brute).zip(&birds) {
+        assert_eq!(g.live, b.live);
+        assert_eq!(
+            g.rng, b.rng,
+            "a packed invocation changed the random stream"
+        );
+        assert_eq!(g.neighbour_count, b.neighbour_count);
+        assert!(rel_error(g.steering, b.steering) < 1e-3);
+        assert!(rel_error(g.pos, b.pos) < 1e-5);
+        if before.live == 0 {
+            assert_eq!(bytemuck::bytes_of(g), bytemuck::bytes_of(before));
+        } else if before.next_decision > 1.0 {
+            assert_eq!(g.steering, before.steering);
+            assert_eq!(g.next_decision, before.next_decision);
+        }
+    }
+}
+
+#[test]
+fn sparse_arrival_queries_match_full_capacity_bruteforce() {
+    let Some(gpu) = gpu_or_skip() else { return };
+    let world = World::new_density_scaled(8000, 11);
+    for live in [1, 17, 257] {
+        let mut grid = Sim::from_snapshot(&gpu, &world.snapshot());
+        let mut brute = Sim::from_snapshot(&gpu, &world.snapshot());
+        let mut birds = grid.read_birds(&gpu).unwrap();
+        for (i, bird) in birds.iter_mut().enumerate() {
+            bird.live = u32::from(i < live);
+            bird.next_decision = 0.0;
+            bird.radius = 20.0;
+        }
+        grid.write_birds(&gpu, &birds);
+        brute.write_birds(&gpu, &birds);
+        grid.advance(&gpu, 1);
+        brute.advance_bruteforce(&gpu, 1);
+        let a = grid.read_birds(&gpu).unwrap();
+        let b = brute.read_birds(&gpu).unwrap();
+        for (a, b) in a.iter().zip(&b).take(live) {
+            assert_eq!(a.neighbour_count, b.neighbour_count);
+            assert!(rel_error(a.steering, b.steering) < 1e-3);
+            assert!((a.centrality - b.centrality).abs() < 1e-4);
+        }
+        assert_eq!(grid.wide_queries(&gpu).unwrap(), 2 * live as u32);
+    }
+}
+
 /// PLAN.md phase 3 acceptance: at 2,000 birds the grid's neighbour sets match
 /// the brute-force walk for at least 99 % of birds.
 #[test]

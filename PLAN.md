@@ -33,6 +33,18 @@ not by reading the code. Read [AGENTS.md](AGENTS.md) before starting.
 If a target is missed after phase 9, report the measured numbers and the
 bottleneck. Do not hide it.
 
+**Phase 9 measurement update (2026-10-17): the estimates above are not met.**
+Timestamped simulation pass totals on the named GTX 1650 Max-Q / NVIDIA
+615.78.08 / Vulkan are 8.905 ms/step at 100k, 129.738 ms at 1M and 429.237 ms
+at 3M (40 samples each, synthetic live-bird scatter at 0.5 birds/m³). All three
+are dominated by `decide`, and the fixed 5 ms model requires **200 steps/s**,
+not one simulation step per presented frame. These are headless measurements,
+with no render resolution; they do not imply presentation FPS. A real 8k
+evening at t=30 s measures 1.304 ms/step (100 samples, arc passes excluded).
+The interactive default is therefore 8k, and the README reports the measured
+numbers rather than promising real-time million-bird simulation. Profiling and
+larger-count optimisation remain open.
+
 ## Data layout
 
 Bird state lives in GPU storage buffers, double-buffered (read current,
@@ -514,6 +526,25 @@ Deviations are in `docs/model.md` ("Phase 8 adaptations"), the timeline in
   not.
 
 ## Phase 9 — Performance
+
+**Reopened visual acceptance after user testing.** The user reports about 2 FPS
+from launch and rejects the bird/background appearance. The earlier isolated
+GPU timings and stills do not establish acceptable interactive playback.
+Profile the complete windowed startup, including surface acquisition, CPU
+submission and presentation. Use the two user-supplied videos and three photos
+as visual references: fine-grained birds, changing folded sheets, soft clouds
+and a grounded foreground. Do not call this revision successful from an offline
+time-lapse or a single render-pass timing. Keep quantitative results and
+unresolved morphology separate.
+
+**Visual/performance revision (user request, 2026-10-17), in progress.** Before
+closing this phase, inspect fresh arrival and display recordings. Replace the
+half-second arrival batches with a continuous, density-scaled approach in both
+engines; retain the published force parameters. Fix the real-time accumulator
+and measure exact neighbour-search optimisations against a live-bird baseline.
+Record images, timestamp measurements and remaining visual limitations in
+`docs/progress.md`. This is an explicit revision of phase 8's arrival initial
+condition, not a claim that its old recording already looked natural.
 
 - Profile with timestamp queries and Nsight Graphics or RenderDoc.
 - Candidates, each kept only if a benchmark shows a gain: sorting less often

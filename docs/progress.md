@@ -1503,6 +1503,22 @@ starts, opens a device and advances — and leaves pipeline coverage to
 once, and the render-on-a-slow-adapter panic above is an app question, not a
 workflow one. No release has been cut from a tag yet.
 
+**Second manual run, after the smoke-test change (run 39123840396): all five jobs
+pass** — Version, Linux x86_64 in 2m21s, both macOS targets in about a minute,
+Windows x86_64 in 1m55s, and the publish job skipped as a manual run should. The
+artifacts were downloaded and inspected rather than taken on the run's word:
+the `.deb` is a Debian format-2.0 package, the `.tar.gz` a gzip archive, both
+macOS binaries are Mach-O (`arm64` and `x86_64`) inside a `Murmuration.app` that
+carries a `_CodeSignature/CodeResources` from the ad-hoc `codesign`, the two
+`.dmg` files are Apple disk images, and the Windows side is a `PE32+` x86_64
+console executable plus a `PE32` GUI `*-setup.exe` (Inno).
+
+One detail that inspection turned up: `app/src/main.rs` sets no
+`windows_subsystem` attribute, so the Windows binary is a console-subsystem PE —
+launching the installed app opens a console window behind the flock. Hiding it
+would also hide the `--bench`/`--analyze`/`--record` output the rest of the
+project relies on, so it is left as it is and noted here instead.
+
 **Found while doing this, unrelated to the workflow:** `ci.yml` has been red for
 at least ten consecutive runs, back to phase 7 (`6262bfb`), and the failure is
 different on each platform: `macos-latest` on

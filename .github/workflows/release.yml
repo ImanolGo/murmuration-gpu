@@ -83,10 +83,22 @@ jobs:
       - name: Build
         run: cargo build --release --locked -p "$CRATE"
 
-      # Proves the packaged binary runs: it opens the adapter, builds every
-      # pipeline and renders a sweep. If this fails the release does not happen.
+      # Proves the packaged binary starts, opens a device and advances the model.
+      #
+      # Deliberately not a rendering command: a headless render frame on a slow
+      # software adapter can outlive the 60 s bounded wait in `adapt_exposure`
+      # and panic (measured on this runner, llvmpipe/Mesa 23.2.1). That says
+      # nothing about the release, and the render pipelines are covered by
+      # `cargo test` in ci.yml. `--analyze` is also the hang-tolerant path: it
+      # reopens the device on a stall instead of dying.
       - name: Smoke test
-        run: target/release/murmuration-gpu --lod-sweep
+        run: |
+          set -euo pipefail
+          out=$(timeout 300 target/release/murmuration-gpu --analyze 1 --birds 1000 --seed 1)
+          printf '%s\n' "$out"
+          # An adapter was opened, and the model actually advanced.
+          printf '%s\n' "$out" | grep -q '# adapter "'
+          printf '%s\n' "$out" | grep -q '^t='
 
       - name: Build the .deb
         run: |

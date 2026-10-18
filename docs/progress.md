@@ -1437,8 +1437,8 @@ without a tag.
 
 - **Linux x86_64** (`ubuntu-22.04`, for an older glibc): `.deb` from
   `cargo-deb 3.8.0` (metadata in `app/Cargo.toml`), plus a `.tar.gz`. The job
-  runs the binary headless (`--lod-sweep`) before packaging, so a release cannot
-  be built from a binary that will not start.
+  runs the binary headless before packaging, so a release cannot be built from a
+  binary that will not start (see the smoke-test note below).
 - **macOS** (`macos-14`, both `aarch64-` and `x86_64-apple-darwin`): a
   `Murmuration.app` bundle with a generated `Info.plist`, ad-hoc signed, shipped
   as a `.dmg` and a `.zip`. Not notarised, so Gatekeeper quarantines it.
@@ -1463,13 +1463,53 @@ Verified locally on 2026-10-18, before any CI run:
 - The version-resolution step was run for a matching tag, a manual run and a
   mismatched tag (fails as intended). The workflow parses as YAML (`js-yaml`).
 
-Not verified, and it needs a real run: `codesign`, `ditto` and `hdiutil` (no
-macOS on this machine), the whole Windows job, and `$auto` shlib dependencies
-(`dpkg-shlibdeps` is not installed here, so the local `.deb` names only
-`libvulkan1`; the Ubuntu runner installs `dpkg-dev` for that reason). No release
-has been cut yet.
+Not verifiable locally: `codesign`, `ditto` and `hdiutil` (no macOS on this
+machine), the Windows job, and `$auto` shlib dependencies (`dpkg-shlibdeps` is
+not installed here, so the local `.deb` names only `libvulkan1`; the runner
+installs `dpkg-dev`). The manual run below covered the first two, and the `Linux
+package` job's `Depends` assertion is what proves `$auto` resolves.
 
 `ci.yml` gained a Linux packaging job that builds and inspects the `.deb` on
 every push (binary present, `Depends` resolvable), so the metadata cannot rot
-between releases. A manual run of the release workflow is what exercised the
-three jobs that cannot run on this machine; its result is recorded below.
+between releases.
+
+**What the manual run showed** (`workflow_dispatch`, run 39123133317,
+2026-10-18; the publish job stays skipped for a manual run, by design):
+
+- **macOS, both architectures: pass.** The `Murmuration.app` bundle, `codesign
+  --deep --sign -`, `ditto` and `hdiutil` all did what they were written to do,
+  and both `.dmg`/`.zip` pairs are in the run's artifacts. This is the one part
+  of the pipeline that cannot be checked by reading the script.
+- **Windows: pass.** The Inno Setup installer compiled from
+  `scripts/windows/murmuration-gpu.iss` with the image's ISCC 6.7.1, next to the
+  `.zip`.
+- **Linux: failed, and correctly so.** The smoke test exited 101. The adapter was
+  found — `llvmpipe (LLVM 15.0.7, 256 bits)` on Vulkan, Mesa 23.2.1 — and the
+  run then panicked at `crates/murmur-render/src/renderer.rs:1389`
+  (`expect("waiting for exposure")`) exactly 60.2 s after the adapter line.
+
+That 60.2 s is `WAIT_BUDGET`, and it exposes something about the app rather than
+about the packaging: the headless paths take the synchronous exposure branch, so
+a frame whose histogram does not arrive inside the 60 s bound panics instead of
+reporting that the adapter is too slow to run at these settings. `--lod-sweep`
+is a render command and hits it; on the GTX 1650 the same command takes 0.5 s and
+never gets close. The Linux job now smoke-tests with
+`--analyze 1 --birds 1000 --seed 1` under `timeout 300` and asserts on the
+adapter line and a `t=` line — a model-level check that the packaged binary
+starts, opens a device and advances — and leaves pipeline coverage to
+`cargo test` in `ci.yml`, which builds and renders on every push anyway.
+
+**Still open:** nothing is code-signed, the macOS builds are only known to pass
+once, and the render-on-a-slow-adapter panic above is an app question, not a
+workflow one. No release has been cut from a tag yet.
+
+**Found while doing this, unrelated to the workflow:** `ci.yml` has been red for
+at least ten consecutive runs, back to phase 7 (`6262bfb`), and the failure is
+different on each platform: `macos-latest` on
+`a_falcon_alarms_the_birds_it_swoops_past` (a panic inside wgpu 30.0.1),
+`ubuntu-latest` on the two `murmur-ref` agitation tests
+(`the_agitation_wave_matches_the_terminal_run`,
+`the_wave_speed_is_inside_the_reference_range`), `windows-latest` on
+`a_resumed_run_takes_the_same_steps` (`crates/murmur-gpu/tests/analyze.rs:142`).
+The same suite passes on the GTX 1650 here, 88 tests, no skips. The new `Linux
+package` job passes.

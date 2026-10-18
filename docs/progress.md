@@ -1442,7 +1442,9 @@ without a tag.
 - **macOS** (`macos-14`, both `aarch64-` and `x86_64-apple-darwin`): a
   `Murmuration.app` bundle with a generated `Info.plist`, ad-hoc signed, shipped
   as a `.dmg` and a `.zip`. Not notarised, so Gatekeeper quarantines it.
-- **Windows x86_64** (`windows-latest`): a `.zip`.
+- **Windows x86_64** (`windows-latest`): a `.zip`, and an Inno Setup installer
+  built from the checked-in `scripts/windows/murmuration-gpu.iss` (Inno Setup 6
+  ships with the runner image; the job fails loudly if `ISCC.exe` is missing).
 - **Version discipline:** the tag must equal `[workspace.package] version`, so
   `v0.2.0` with a 0.1.0 binary fails the run instead of shipping a mislabelled
   release. Only `murmuration-gpu` is packaged; `murmur-ref`'s `analyze` stays a
@@ -1466,3 +1468,8 @@ macOS on this machine), the whole Windows job, and `$auto` shlib dependencies
 (`dpkg-shlibdeps` is not installed here, so the local `.deb` names only
 `libvulkan1`; the Ubuntu runner installs `dpkg-dev` for that reason). No release
 has been cut yet.
+
+`ci.yml` gained a Linux packaging job that builds and inspects the `.deb` on
+every push (binary present, `Depends` resolvable), so the metadata cannot rot
+between releases. A manual run of the release workflow is what exercised the
+three jobs that cannot run on this machine; its result is recorded below.

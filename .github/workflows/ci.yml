@@ -53,3 +53,34 @@ jobs:
 
       - name: Build at the declared MSRV
         run: cargo build --workspace --all-targets --locked
+
+  package:
+    name: Linux package
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # dpkg-dev brings dpkg-shlibdeps, which resolves the .deb's `$auto`
+      # dependencies, and dpkg-deb, which inspects the result below.
+      - name: Install dpkg-dev
+        run: sudo apt-get update && sudo apt-get install -y dpkg-dev
+
+      - name: Build the release binary
+        run: cargo build --release --locked -p murmuration-gpu
+
+      # The release workflow runs the same packaging from a tag. This job is
+      # here so `[package.metadata.deb]` cannot rot between releases.
+      - name: Build and inspect the .deb
+        run: |
+          set -euo pipefail
+          cargo install cargo-deb --locked
+          cargo deb -p murmuration-gpu --no-build
+          dpkg-deb --info target/debian/*.deb
+          dpkg-deb --contents target/debian/*.deb | grep -q 'usr/bin/murmuration-gpu'
+          # `$auto` needs the runner's own shared libraries to resolve into
+          # real dependencies; an empty Depends means dpkg-shlibdeps did not run.
+          dpkg-deb --field target/debian/*.deb Depends | grep -q libc6

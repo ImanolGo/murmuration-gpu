@@ -203,7 +203,7 @@ from a tag, one artifact per platform:
 | --- | --- |
 | Linux x86_64 | `.deb` (installs `/usr/bin/murmuration-gpu`) and `.tar.gz` |
 | macOS arm64, x86_64 | `Murmuration.app` as a `.dmg` and a `.zip` |
-| Windows x86_64 | `.zip` with `murmuration-gpu.exe` |
+| Windows x86_64 | `.zip` with `murmuration-gpu.exe`, and an Inno Setup installer |
 
 The tag must match `version` in the workspace `Cargo.toml`, so a release is two
 steps:

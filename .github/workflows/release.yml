@@ -210,10 +210,39 @@ jobs:
           Copy-Item target/release/murmuration-gpu.exe, README.md, LICENSE $stage
           Compress-Archive -Path $stage -DestinationPath "$stage.zip"
 
+      # Inno Setup 6 ships with the windows runner image. The script is checked
+      # in at scripts/windows/, so a broken one fails the release here rather
+      # than at install time on someone's machine.
+      - name: Build the installer
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $iscc = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { throw "Inno Setup 6 (ISCC.exe) is not on this runner" }
+
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $exe = (Resolve-Path target/release/murmuration-gpu.exe).Path
+          $readme = (Resolve-Path README.md).Path
+          $license = (Resolve-Path LICENSE).Path
+          $out = (Get-Item dist).FullName
+
+          & $iscc `
+            "/DVersion=$env:VERSION" `
+            "/DExePath=$exe" `
+            "/DReadmePath=$readme" `
+            "/DLicensePath=$license" `
+            "/DOutputDir=$out" `
+            scripts/windows/murmuration-gpu.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC.exe exited with $LASTEXITCODE" }
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x86_64
-          path: dist/*.zip
+          path: dist/*
           if-no-files-found: error
 
   release:
@@ -250,7 +279,7 @@ jobs:
             | Linux x86_64 | `*.deb` | Installs `/usr/bin/murmuration-gpu`; needs `libvulkan1` and a Vulkan driver |
             | Linux x86_64 | `*.tar.gz` | The same binary, no package manager |
             | macOS arm64, x86_64 | `*.dmg`, `*.zip` | `Murmuration.app`, ad-hoc signed |
-            | Windows x86_64 | `*.zip` | `murmuration-gpu.exe`, needs a Vulkan or DX12 driver |
+            | Windows x86_64 | `*.zip`, `*-setup.exe` | `murmuration-gpu.exe`, needs a Vulkan or DX12 driver |
 
             Check the downloads against `SHA256SUMS.txt`.
 

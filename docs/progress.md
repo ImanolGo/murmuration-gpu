@@ -1499,9 +1499,10 @@ adapter line and a `t=` line — a model-level check that the packaged binary
 starts, opens a device and advances — and leaves pipeline coverage to
 `cargo test` in `ci.yml`, which builds and renders on every push anyway.
 
-**Still open:** nothing is code-signed, the macOS builds are only known to pass
-once, and the render-on-a-slow-adapter panic above is an app question, not a
-workflow one. No release has been cut from a tag yet.
+**Still open:** nothing is code-signed or notarised, so Gatekeeper and SmartScreen
+both warn on first open — that is a certificate the project does not have, not a
+gap in the workflow. The render-on-a-slow-adapter panic above is an app question,
+not a workflow one. The release side is done: `v0.1.0` is published, below.
 
 **Second manual run, after the smoke-test change (run 39123840396): all five jobs
 pass** — Version, Linux x86_64 in 2m21s, both macOS targets in about a minute,
@@ -1529,3 +1530,31 @@ different on each platform: `macos-latest` on
 `a_resumed_run_takes_the_same_steps` (`crates/murmur-gpu/tests/analyze.rs:142`).
 The same suite passes on the GTX 1650 here, 88 tests, no skips. The new `Linux
 package` job passes.
+
+**First tag: `v0.1.0`** (run 39124554528). All six jobs pass, publish included,
+and [the release](https://github.com/ImanolGo/murmuration-gpu/releases/tag/v0.1.0)
+carries eight assets plus `SHA256SUMS.txt`.
+
+The first attempt on the tag (run 39124281918) failed in the publish job, and it
+was a real bug in the workflow rather than a runner quirk. The checksums step ran
+`sha256sum *` over `dist/`, which by then held two **directories**: the macOS
+upload had swept in the whole `Murmuration.app` bundle tree, and the Windows one
+the staging folder it zips. `sha256sum` refuses directories, so the step exited 1
+before the release could be created. The uploads now name what they want
+(`dist/*.dmg`, `dist/*.zip`, `dist/*.exe`) and the checksum step hashes files
+only, so a regressed upload pattern reports itself as a missing asset instead of
+as a checksum error. Checked against a `dist/` holding both directories: eight
+files hashed, and `sha256sum -c` verifies.
+
+The tag was moved onto the fix rather than bumping to `0.1.1`: no release had been
+published at that point (`gh release view v0.1.0` said "release not found"), and
+`0.1.0` is what the binary reports, so re-tagging the same version is the honest
+option — bumping would have left a version no build ever claimed.
+
+Verification of the *published* result rather than of the build logs: all eight
+assets were downloaded from the release and `sha256sum -c SHA256SUMS.txt` passes
+on every one; `file` reports a Debian format-2.0 package, a gzip archive, two
+Apple disk images, two macOS zips, a Windows zip and a `PE32` GUI Inno setup; and
+the released Linux binary, unpacked from the `.tar.gz`, runs on the GTX 1650 here
+(`--analyze 1 --birds 500`, adapter `NVIDIA GeForce GTX 1650 with Max-Q Design`,
+0.39 s).

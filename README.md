@@ -196,14 +196,17 @@ Controls:
 
 ## Releases
 
-Releases are built by [.github/workflows/release.yml](.github/workflows/release.yml)
-from a tag, one artifact per platform:
+[Releases](https://github.com/ImanolGo/murmuration-gpu/releases) are built by
+[.github/workflows/release.yml](.github/workflows/release.yml) from a tag, one
+artifact per platform:
 
 | Platform | Files |
 | --- | --- |
 | Linux x86_64 | `.deb` (installs `/usr/bin/murmuration-gpu`) and `.tar.gz` |
 | macOS arm64, x86_64 | `Murmuration.app` as a `.dmg` and a `.zip` |
 | Windows x86_64 | `.zip` with `murmuration-gpu.exe`, and an Inno Setup installer |
+
+Every asset is listed in `SHA256SUMS.txt`.
 
 The tag must match `version` in the workspace `Cargo.toml`, so a release is two
 steps:
@@ -217,9 +220,12 @@ The workflow fails before building if the two disagree. A manual run from the
 Actions tab builds every artifact and stops there, which is how to try a
 packaging change without releasing it.
 
-The macOS builds are ad-hoc signed, and nothing is notarised, so Gatekeeper
-wants a right-click *Open* the first time. Only the Linux build is smoke-tested
-in CI.
+Nothing is code-signed or notarised. Gatekeeper quarantines the macOS builds, so
+the first open needs a right-click *Open* — or `xattr -dr
+com.apple.quarantine Murmuration.app` — and SmartScreen warns about the Windows
+installer. The Linux job runs the packaged binary headless (`--analyze`) before
+it packages it; rendering is covered by the GPU tests in
+[ci.yml](.github/workflows/ci.yml).
 
 ## How it works
 

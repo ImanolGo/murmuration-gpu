@@ -195,7 +195,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ matrix.target }}
-          path: dist/*
+          # Only the two deliverables: the .app itself is inside both, and a
+          # directory in the release's dist/ breaks the checksum pass.
+          path: |
+            dist/*.dmg
+            dist/*.zip
           if-no-files-found: error
 
   windows:
@@ -254,7 +258,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x86_64
-          path: dist/*
+          # The zip and the installer; `dist/*.exe` cannot reach the staged
+          # copy of the exe, which lives one directory down.
+          path: |
+            dist/*.zip
+            dist/*.exe
           if-no-files-found: error
 
   release:
@@ -268,12 +276,17 @@ jobs:
           path: dist
           merge-multiple: true
 
+      # Files only. `sha256sum *` fails the whole job the moment an artifact
+      # carries a directory (it did: Murmuration.app and the Windows staging
+      # folder), and a directory has no business in the asset list either.
       - name: Checksums
         run: |
           set -euo pipefail
           cd dist
-          sha256sum * > SHA256SUMS.txt
+          find . -maxdepth 1 -type f -not -name SHA256SUMS.txt -printf '%f\0' \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS.txt
           cat SHA256SUMS.txt
+          test "$(wc -l < SHA256SUMS.txt)" -ge 6
 
       - uses: softprops/action-gh-release@v2
         with:

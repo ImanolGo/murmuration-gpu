@@ -1,0 +1,261 @@
+name: Release
+
+# One release per tag. The tag must match `[workspace.package] version` (so a
+# `v0.2.0` tag whose binary still reports 0.1.0 fails here instead of shipping);
+# bump `Cargo.toml` first, then tag.
+#
+# A manual run builds every artifact and uploads them as workflow artifacts
+# without creating a release, which is the way to try a packaging change.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  CRATE: murmuration-gpu
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+      publish: ${{ steps.resolve.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Resolve the version and the tag
+        id: resolve
+        run: |
+          set -euo pipefail
+          crate=$(cargo metadata --no-deps --format-version 1 |
+            jq -r '.packages[] | select(.name == "'"$CRATE"'") | .version')
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            tag="$GITHUB_REF_NAME"
+            version="${tag#v}"
+            if [ "$version" != "$crate" ]; then
+              echo "::error::tag $tag does not match the workspace version $crate:" \
+                   "bump [workspace.package] version or re-tag"
+              exit 1
+            fi
+            publish=true
+          else
+            version="$crate"
+            tag="v$crate"
+            publish=false
+          fi
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "building $tag (version $version, publish $publish)"
+
+  linux:
+    name: Linux x86_64
+    needs: version
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The .deb names libvulkan1 itself (see app/Cargo.toml). The rest is for
+      # the smoke test: llvmpipe gives the runner a real software Vulkan
+      # adapter, and the winit stack lets the binary open its device.
+      # dpkg-dev brings dpkg-shlibdeps, which is what resolves `$auto` into
+      # real libc6/libgcc-s1 dependencies instead of leaving the field empty.
+      - name: Install Vulkan and the desktop stack
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev libvulkan1 mesa-vulkan-drivers \
+            libxkbcommon0 libwayland-client0 libx11-6
+
+      - name: Build
+        run: cargo build --release --locked -p "$CRATE"
+
+      # Proves the packaged binary runs: it opens the adapter, builds every
+      # pipeline and renders a sweep. If this fails the release does not happen.
+      - name: Smoke test
+        run: target/release/murmuration-gpu --lod-sweep
+
+      - name: Build the .deb
+        run: |
+          set -euo pipefail
+          cargo install cargo-deb --locked
+          mkdir -p dist
+          cargo deb -p "$CRATE" --no-build \
+            --deb-version "${{ needs.version.outputs.version }}"
+          cp target/debian/*.deb dist/
+
+      - name: Build the .tar.gz
+        run: |
+          set -euo pipefail
+          stage="murmuration-gpu-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu"
+          mkdir -p "dist/$stage"
+          cp target/release/murmuration-gpu README.md LICENSE "dist/$stage/"
+          tar -C dist -czf "dist/$stage.tar.gz" "$stage"
+          rm -r "dist/$stage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.target }}
+    needs: version
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        # One job per architecture; a universal binary would need both targets
+        # in one `cargo build` and lipo, and the two runners differ anyway.
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked -p "$CRATE" --target ${{ matrix.target }}
+
+      # An .app, not a bare binary: winit wants a bundle for the menu bar and
+      # the window to behave, and it is what a dmg is expected to contain.
+      - name: Bundle Murmuration.app and the disk image
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            aarch64-apple-darwin) arch=arm64 ;;
+            x86_64-apple-darwin) arch=x86_64 ;;
+          esac
+          app=dist/Murmuration.app
+          rm -rf dist
+          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+          cp "target/$TARGET/release/murmuration-gpu" "$app/Contents/MacOS/"
+          cat > "$app/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key><string>en</string>
+            <key>CFBundleExecutable</key><string>murmuration-gpu</string>
+            <key>CFBundleIdentifier</key><string>io.github.imanolgo.murmuration-gpu</string>
+            <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+            <key>CFBundleName</key><string>Murmuration</string>
+            <key>CFBundleDisplayName</key><string>Murmuration GPU</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleShortVersionString</key><string>$VERSION</string>
+            <key>CFBundleVersion</key><string>$VERSION</string>
+            <key>LSMinimumSystemVersion</key><string>11.0</string>
+            <key>NSHighResolutionCapable</key><true/>
+            <key>NSPrincipalClass</key><string>NSApplication</string>
+          </dict>
+          </plist>
+          PLIST
+          # Ad-hoc signature: enough for the arm64 kernel to run it, no identity
+          # and no notarisation, so Gatekeeper still quarantines it on first open.
+          codesign --force --deep --sign - "$app"
+          mkdir -p dist/dmg
+          cp -R "$app" README.md LICENSE dist/dmg/
+          ditto -c -k --keepParent "$app" "dist/murmuration-gpu-$VERSION-$arch-macos.zip"
+          hdiutil create -volname Murmuration -srcfolder dist/dmg -ov -format UDZO \
+            "dist/murmuration-gpu-$VERSION-$arch.dmg"
+          rm -rf dist/dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86_64
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked -p $env:CRATE
+
+      - name: Package the .zip
+        shell: pwsh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $stage = "dist/murmuration-gpu-$env:VERSION-x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item target/release/murmuration-gpu.exe, README.md, LICENSE $stage
+          Compress-Archive -Path $stage -DestinationPath "$stage.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: GitHub release
+    needs: [version, linux, macos, windows]
+    if: needs.version.outputs.publish == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          files: dist/*
+          body: |
+            Builds of ${{ needs.version.outputs.tag }}, from the tag itself; the
+            command line is in the
+            [README](https://github.com/ImanolGo/murmuration-gpu/blob/${{ needs.version.outputs.tag }}/README.md).
+
+            | Platform | File | Notes |
+            | --- | --- | --- |
+            | Linux x86_64 | `*.deb` | Installs `/usr/bin/murmuration-gpu`; needs `libvulkan1` and a Vulkan driver |
+            | Linux x86_64 | `*.tar.gz` | The same binary, no package manager |
+            | macOS arm64, x86_64 | `*.dmg`, `*.zip` | `Murmuration.app`, ad-hoc signed |
+            | Windows x86_64 | `*.zip` | `murmuration-gpu.exe`, needs a Vulkan or DX12 driver |
+
+            Check the downloads against `SHA256SUMS.txt`.
+
+            The macOS builds are ad-hoc signed and not notarised, so Gatekeeper
+            quarantines them: right-click the app and choose *Open* the first
+            time, or run `xattr -dr com.apple.quarantine Murmuration.app`. No
+            artifact here is code-signed, and only the Linux build is
+            smoke-tested in CI.

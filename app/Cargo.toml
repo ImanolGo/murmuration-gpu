@@ -16,3 +16,26 @@ murmur-render = { path = "../crates/murmur-render" }
 pollster.workspace = true
 wgpu.workspace = true
 winit.workspace = true
+
+# The release workflow's Linux package: `cargo deb -p murmuration-gpu` writes a
+# .deb that installs the release binary as /usr/bin/murmuration-gpu and the
+# README next to it. wgpu loads its Vulkan driver with dlopen, which the
+# automatic shared-library scan cannot see, so the loader is named by hand and a
+# driver is recommended rather than required (llvmpipe also runs, slowly).
+[package.metadata.deb]
+maintainer = "Imanol Gomez <imanol@steinergomez.com>"
+copyright = "2026, Imanol Gomez"
+license-file = ["../LICENSE", "0"]
+section = "science"
+priority = "optional"
+depends = "$auto, libvulkan1"
+recommends = "mesa-vulkan-drivers | nvidia-driver-libs"
+extended-description = """\
+Starlings at dusk, on your GPU: a research-inspired murmuration simulated and
+rendered in real time with wgpu, following the StarDisplay model of starling
+flocking. It opens a window and wants a Vulkan-capable GPU; without one it
+falls back to a software rasteriser and runs very slowly."""
+assets = [
+    ["target/release/murmuration-gpu", "usr/bin/", "755"],
+    ["../README.md", "usr/share/doc/murmuration-gpu/README.md", "644"],
+]

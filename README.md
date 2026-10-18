@@ -194,6 +194,33 @@ Controls:
 | `f`                           | Cycle the falcon: hunting → mouse-steered → off      |
 | Move the mouse                | Steer the falcon once `f` has put it in mouse mode   |
 
+## Releases
+
+Releases are built by [.github/workflows/release.yml](.github/workflows/release.yml)
+from a tag, one artifact per platform:
+
+| Platform | Files |
+| --- | --- |
+| Linux x86_64 | `.deb` (installs `/usr/bin/murmuration-gpu`) and `.tar.gz` |
+| macOS arm64, x86_64 | `Murmuration.app` as a `.dmg` and a `.zip` |
+| Windows x86_64 | `.zip` with `murmuration-gpu.exe` |
+
+The tag must match `version` in the workspace `Cargo.toml`, so a release is two
+steps:
+
+```fish
+# bump version in Cargo.toml first, then
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The workflow fails before building if the two disagree. A manual run from the
+Actions tab builds every artifact and stops there, which is how to try a
+packaging change without releasing it.
+
+The macOS builds are ad-hoc signed, and nothing is notarised, so Gatekeeper
+wants a right-click *Open* the first time. Only the Linux build is smoke-tested
+in CI.
+
 ## How it works
 
 Each frame runs a fixed-step simulation, then a render pass, on one GPU:
